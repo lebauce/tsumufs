@@ -105,10 +105,12 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       return False
 
     self._debug('Initializing trayIcon thread.')
+    self._iconThread = None
     try:
-      self._iconThread = tsumufs.TrayIconThread()
+      import trayicon
+      self._iconThread = trayicon.TrayIconThread()
     except:
-      exc_info = sys.exc_info()    
+      exc_info = sys.exc_info()
 
     # Initialize our threads
     self._debug('Initializing sync thread.')
@@ -129,8 +131,9 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       return False
 
     # Start the threads
-    self._debug('Starting Icon thread.')
-    self._iconThread.start()
+    if self._iconThread:
+        self._debug('Starting Icon thread.')
+        self._iconThread.start()
     self._debug('Starting sync thread.')
     self._syncThread.start()
 

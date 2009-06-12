@@ -40,7 +40,6 @@ from filepermission import *
 from permissionsoverlay import *
 from extendedattributes import *
 from metrics import *
-from trayicon import *
 
 
 __version__ = (0, 14)
