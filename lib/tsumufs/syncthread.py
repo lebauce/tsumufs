@@ -449,23 +449,23 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       while not tsumufs.unmounted.isSet():
         self._debug('TsumuFS not unmounted yet.')
 
+        time.sleep(2)
         while (not tsumufs.nfsAvailable.isSet()
                and not tsumufs.unmounted.isSet()):
-          self._debug('NFS unavailable')
-
-          if not tsumufs.forceDisconnect.isSet():
-            self._attemptMount()
-            tsumufs.unmounted.wait(5)
+          
+          if tsumufs.nfsMount.pingServerOK():
+            tsumufs.nfsAvailable.set()
+            self._debug('great, NFS available')
           else:
-            self._debug(('...because user forced disconnect. '
-                         'Not attempting mount.'))
+            tsumufs.nfsAvailable.clear()
+            self._debug('sorry, NFS unvailable')
             time.sleep(5)
 
         while tsumufs.syncPause.isSet():
           self._debug('User requested sync pause. Sleeping.')
           time.sleep(5)
 
-        while (tsumufs.nfsAvailable.isSet()
+        while (tsumufs.nfsMount.pingServerOK()
                and not tsumufs.unmounted.isSet()
                and not tsumufs.syncPause.isSet()):
           try:
@@ -480,6 +480,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
           self._debug('Got one: %s' % repr(item))
 
           try:
+            tsumufs.syncWork.set() 
             # Handle the change
             self._debug('Handling change.')
             self._handleChange(item, change)
@@ -489,6 +490,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
             try:
               tsumufs.syncLog.finishedWithChange(item)
+              tsumufs.syncWork.clear()
             except Exception, e:
               exc_info = sys.exc_info()
 
@@ -515,7 +517,9 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       self._debug('Unmounting NFS.')
 
       try:
-        tsumufs.nfsMount.unmount()
+        #No need to umount NFSMountPath in my application  
+        #tsumufs.nfsMount.unmount()
+        pass
       except:
         self._debug('Unable to unmount NFS -- caught an exception.')
         tsumufs.syslogCurrentException()

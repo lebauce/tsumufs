@@ -40,11 +40,12 @@ from filepermission import *
 from permissionsoverlay import *
 from extendedattributes import *
 from metrics import *
+from trayicon import *
 
 
 __version__ = (0, 14)
 
-debugMode = False
+debugMode = True
 debugLevel = 0
 
 progName   = None
@@ -56,8 +57,8 @@ mountOptions = None
 
 nfsBaseDir    = '/var/lib/tsumufs/nfs'
 nfsMountPoint = None
-nfsMountCmd   = '/usr/bin/sudo -u root /bin/mount -t nfs'
-nfsUnmountCmd = '/usr/bin/sudo -u root /bin/umount'
+nfsMountCmd   = '/bin/mount -t nfs'
+nfsUnmountCmd = '/bin/umount'
 nfsMount      = None
 
 cacheBaseDir = '/var/cache/tsumufs'
@@ -73,12 +74,14 @@ synclogPath = None
 permsOverlay = None
 permsPath = None
 
+icon = None
 socketDir = '/var/run/tsumufs'
 
 unmounted       = threading.Event()
 nfsAvailable    = threading.Event()
 forceDisconnect = threading.Event()
 syncPause       = threading.Event()
+syncWork        = threading.Event()
 
 defaultCacheMode = 0600         # readable only by the user
 

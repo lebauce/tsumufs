@@ -25,6 +25,8 @@ import statvfs
 import time
 import threading
 import traceback
+import gettext
+gettext.install('TsumuFS', 'locale', unicode=1) 
 
 import fuse
 from fuse import Fuse
@@ -102,6 +104,12 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
+    self._debug('Initializing trayIcon thread.')
+    try:
+      self._iconThread = tsumufs.TrayIconThread()
+    except:
+      exc_info = sys.exc_info()    
+
     # Initialize our threads
     self._debug('Initializing sync thread.')
     try:
@@ -121,6 +129,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       return False
 
     # Start the threads
+    self._debug('Starting Icon thread.')
+    self._iconThread.start()
     self._debug('Starting sync thread.')
     self._syncThread.start()
 
@@ -156,6 +166,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('Setting event and condition states.')
     tsumufs.unmounted.set()
     tsumufs.nfsAvailable.clear()
+    tsumufs.syncWork.clear()
     tsumufs.syncPause.clear()
 
     self._debug('Waiting for the sync thread to finish.')
@@ -498,6 +509,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: readdir | path: %s | offset: %d' % (path, offset))
 
     try:
+      filename = None
       context = self.GetContext()
       tsumufs.cacheManager.access(context['uid'], path, os.R_OK)
 

@@ -23,9 +23,9 @@ FUNC_TESTS     := $(shell echo $(FUNC_TEST_SRC) |sed -e 's/\.c//g')
 UMOUNT_CMD     := sudo umount
 FUMOUNT_CMD    := fusermount -u
 
-TEST_DIR       := /tmp/tsumufs-test-dir
+TEST_DIR       := /tmp/tsumufs-test-bast-dir
 TEST_CACHE_DIR := /tmp/tsumufs-cache-dir
-TEST_NFS_DIR   := /tmp/tsumufs-nfs-dir
+TEST_NFS_DIR   := /mnt/nfs
 
 PYTHON   := $(shell which python)
 DESTDIR  := /
@@ -78,11 +78,9 @@ test-environment:
 		exit 1; \
 	fi
 
-test-run: test-environment clean $(TEST_DIR) $(TEST_CACHE_DIR) $(TEST_NFS_DIR)
-	rm -rf tests/filesystem
-	tar xf tests/filesystem.tar -C tests/
+test-run: $(TEST_DIR) $(TEST_CACHE_DIR) $(TEST_NFS_DIR) ###test-environment clean
 
-	src/tsumufs -d -l $(DEBUG_LEVEL) -O $(NFSOPTS) \
+	src/tsumufs -d -l $(DEBUG_LEVEL) \
 		-o nfsmountpoint=$(TEST_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) \
 		$(NFSHOME) $(TEST_DIR)
 
@@ -97,6 +95,23 @@ test-run: test-environment clean $(TEST_DIR) $(TEST_CACHE_DIR) $(TEST_NFS_DIR)
 	cd $(OLD_PWD)
 
 	$(UMOUNT_CMD) $(TEST_DIR)
+
+clean-bast:
+	rm -rf tests/filesystem
+	tar xf tests/filesystem.tar -C tests/
+
+megabast:
+	src/tsumufs -l 0 -o nfsmountpoint=/mnt/nfs,cachebasedir=/tmp/tsumufs-cache-dir,nfsmountcmd=true 192.168.1.4:/home /tmp/tsumufs-test1-dir
+
+bast: $(TEST_DIR) $(TEST_CACHE_DIR)
+#######	src/tsumufs -l 0 -o nfsmountpoint=/mnt/nfs,cachebasedir=/tmp/tsumufs-cache-dir,nfsmountcmd=true 192.168.1.4:/home /tmp/tsumufs-test1-dir
+	
+	src/tsumufs -l 0 -o nfsmountpoint=$(TEST_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(NFSHOME) $(TEST_DIR)
+	
+#	cd $(TEST_DIR);             \
+	CACHE_DIR=$(TEST_CACHE_DIR) \
+	NFS_DIR=$(TEST_NFS_DIR)     \
+	TEST_DIR=$(TEST_DIR)        \
 
 tail-logs:
 	sudo tail -f /var/log/messages |grep --color "tsumufs($(USER)):"

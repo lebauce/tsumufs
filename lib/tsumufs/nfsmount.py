@@ -86,7 +86,20 @@ class NFSMount(tsumufs.Debuggable):
     '''
     Method to verify that the NFS server is available.
     '''
-    return True
+    import subprocess
+    import os
+    retval=subprocess.call('/home/megabast/Documents/tsumuFS/tsumufs-read-only/lib/tsumufs/PingServer.sh')
+    
+    
+    if retval == 0:
+      tsumufs.nfsAvailable.set()
+      self._debug('NFS ping succeed >>>> you are connected ')
+      return True
+    else:
+       tsumufs.nfsAvailable.clear()
+       self._debug('NFS ping failed >>>> you are disconnected ')
+       return False
+    
 
   def nfsCheckOK(self):
     '''
