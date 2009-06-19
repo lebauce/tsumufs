@@ -79,12 +79,12 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       return False
 
     self._debug('NFS ping successful.')
-    self._debug('Checking NFS sanity.')
-    if not tsumufs.nfsMount.nfsCheckOK():
-      self._debug('NFS sanity check failed.')
-      return False
+    #self._debug('Checking NFS sanity.')
+    #if not tsumufs.nfsMount.nfsCheckOK():
+      #self._debug('NFS sanity check failed.')
+      #return False
 
-    self._debug('NFS sanity check okay.')
+    #self._debug('NFS sanity check okay.')
     self._debug('Attempting mount.')
 
     try:
@@ -450,22 +450,23 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         self._debug('TsumuFS not unmounted yet.')
 
         time.sleep(2)
-        while (not tsumufs.nfsAvailable.isSet()
+        while (not tsumufs.nfsMount.pingServerOK()
                and not tsumufs.unmounted.isSet()):
           
-          if tsumufs.nfsMount.pingServerOK():
-            tsumufs.nfsAvailable.set()
-            self._debug('great, NFS available')
-          else:
-            tsumufs.nfsAvailable.clear()
-            self._debug('sorry, NFS unvailable')
-            time.sleep(5)
+          self._debug('sorry, NFS unvailable')
+          time.sleep(5)
+         
+        while (tsumufs.nfsMount.pingServerOK()
+               and not os.path.ismount(tsumufs.nfsMountPoint)
+               and not tsumufs.unmounted.isSet()):  
+          self._attemptMount()
+          time.sleep(5)
 
         while tsumufs.syncPause.isSet():
           self._debug('User requested sync pause. Sleeping.')
           time.sleep(5)
 
-        while (tsumufs.nfsMount.pingServerOK()
+        while (tsumufs.nfsMount.nfsCheckOK()
                and not tsumufs.unmounted.isSet()
                and not tsumufs.syncPause.isSet()):
           try:

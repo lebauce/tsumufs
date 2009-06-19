@@ -92,21 +92,21 @@ class NFSMount(tsumufs.Debuggable):
     
     
     if retval == 0:
-      tsumufs.nfsAvailable.set()
-      self._debug('NFS ping succeed >>>> you are connected ')
       return True
     else:
-       tsumufs.nfsAvailable.clear()
-       self._debug('NFS ping failed >>>> you are disconnected ')
        return False
     
 
   def nfsCheckOK(self):
     '''
-    Method to verify that the NFS server is available and returning
-    valid responses.
+    Method to verify that the NFS server is available and mounting
     '''
-    return True
+    if self.pingServerOK() and os.path.ismount(tsumufs.nfsMountPoint):
+      tsumufs.nfsAvailable.set()  
+      return True
+    else:
+      tsumufs.nfsAvailable.clear()
+      return False
 
   def readFileRegion(self, filename, start, end):
     '''
@@ -239,7 +239,7 @@ class NFSMount(tsumufs.Debuggable):
   def mount(self):
     '''
     Quick and dirty method to actually mount the real NFS connection
-    somewhere else on the filesystem. For now, this just shells out to
+    somewhere else on the filesystem. For now, this just sheNonells out to
     the mount(8) command to do its dirty work.
     '''
 

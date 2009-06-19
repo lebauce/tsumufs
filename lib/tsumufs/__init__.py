@@ -55,8 +55,8 @@ mountPoint   = None
 mountOptions = None
 
 nfsBaseDir    = '/var/lib/tsumufs/nfs'
-nfsMountPoint = None
-nfsMountCmd   = '/bin/mount -t nfs'
+nfsMountPoint = '/mnt/nfs'
+nfsMountCmd   = 'sudo /bin/mount -t nfs'
 nfsUnmountCmd = '/bin/umount'
 nfsMount      = None
 
