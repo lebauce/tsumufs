@@ -23,7 +23,7 @@ FUNC_TESTS     := $(shell echo $(FUNC_TEST_SRC) |sed -e 's/\.c//g')
 UMOUNT_CMD     := sudo umount
 FUMOUNT_CMD    := fusermount -u
 
-TEST_DIR       := /tmp/tsumufs-test-bast-dir
+TEST_DIR       := /tmp/tsumufs-test-nfs-dir
 TEST_CACHE_DIR := /tmp/tsumufs-cache-dir
 TEST_NFS_DIR   := /mnt/nfs
 

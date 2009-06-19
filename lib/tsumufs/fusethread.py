@@ -884,10 +884,13 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: utime | path: %s' % path)
 
     try:
-      result = tsumufs.cacheManager.stat(path, True)
-
-      tsumufs.cacheManager.utime(path, times)
-      tsumufs.syncLog.addMetadataChange(path, times=times)
+      #result = tsumufs.cacheManager.stat(path, True)
+      #tsumufs.cacheManager.utime(path, times)
+      #tsumufs.cacheManager.utime(path, times)
+      
+      inode = tsumufs.cacheManager.statFile(path).st_ino
+      
+      tsumufs.syncLog.addMetadataChange(path, inode )
 
       return True
     except OSError, e:
