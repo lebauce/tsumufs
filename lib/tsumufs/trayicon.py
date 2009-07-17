@@ -57,7 +57,7 @@ class TrayIconThread(tsumufs.Debuggable, threading.Thread):
   _isConnected = False
   _isConflicted = False
 
-  _iconPathPrefix = os.path.join(sys.path[0],'../icons')
+  _iconPathPrefix ="/usr/share/tsumufs/icons" 
   
   _isSynchronized = False  
 
