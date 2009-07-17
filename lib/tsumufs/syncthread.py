@@ -14,7 +14,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-'''TsumuFS, a NFS-based caching filesystem.'''
+'''TsumuFS, a fs-based caching filesystem.'''
 
 import os
 import shutil
@@ -47,7 +47,7 @@ changesets
 
 class SyncThread(tsumufs.Debuggable, threading.Thread):
   '''
-  Thread to handle cache and NFS mount management.
+  Thread to handle cache and fs mount management.
   '''
 
   def __init__(self):
@@ -71,57 +71,57 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     self._debug('Initialization complete.')
 
   def _attemptMount(self):
-    self._debug('Attempting to mount NFS.')
+    self._debug('Attempting to mount fs.')
 
-    self._debug('Checking for NFS server availability')
-    if not tsumufs.nfsMount.pingServerOK():
-      self._debug('NFS ping failed.')
+    self._debug('Checking for fs server availability')
+    if not tsumufs.fsBackend.pingServerOK():
+      self._debug('fs ping failed.')
       return False
 
-    self._debug('NFS ping successful.')
-    #self._debug('Checking NFS sanity.')
-    #if not tsumufs.nfsMount.nfsCheckOK():
-      #self._debug('NFS sanity check failed.')
+    self._debug('fs ping successful.')
+    #self._debug('Checking fs sanity.')
+    #if not tsumufs.fsMount.fsCheckOK():
+      #self._debug('fs sanity check failed.')
       #return False
 
-    #self._debug('NFS sanity check okay.')
+    #self._debug('fs sanity check okay.')
     self._debug('Attempting mount.')
 
     try:
-      result = tsumufs.nfsMount.mount()
+      result = tsumufs.fsBackend.mount()
     except:
       self._debug('Exception: %s' + traceback.format_exc())
-      self._debug('NFS mount failed.')
-      tsumufs.nfsAvailable.clear()
+      self._debug('fs mount failed.')
+      tsumufs.fsAvailable.clear()
       return False
 
     if result:
-      self._debug('NFS mount complete.')
-      tsumufs.nfsAvailable.set()
+      self._debug('fs mount complete.')
+      tsumufs.fsAvailable.set()
       return True
     else:
-      self._debug('Unable to mount NFS.')
-      tsumufs.nfsAvailable.clear()
+      self._debug('Unable to mount fs.')
+      tsumufs.fsAvailable.clear()
       return False
 
   def _propogateNew(self, item, change):
     fusepath = item.getFilename()
-    nfspath = tsumufs.nfsPathOf(fusepath)
+    fspath = tsumufs.fsPathOf(fusepath)
 
     # Horrible hack, but it works to test for the existance of a file.
     try:
-      tsumufs.nfsMount.readFileRegion(fusepath, 0, 0)
+      tsumufs.fsBackend.readFileRegion(fusepath, 0, 0)
     except (OSError, IOError), e:
       if e.errno != errno.ENOENT:
         return True
 
     if item.getFileType() != 'dir':
       shutil.copy(tsumufs.cachePathOf(fusepath),
-                  tsumufs.nfsPathOf(fusepath))
+                  tsumufs.fsPathOf(fusepath))
     else:
       perms = tsumufs.permsOverlay.getPerms(fusepath)
-      os.mkdir(tsumufs.nfsPathOf(fusepath), perms.mode)
-      os.chown(tsumufs.nfsPathOf(fusepath), perms.uid, perms.gid)
+      os.mkdir(tsumufs.fsPathOf(fusepath), perms.mode)
+      os.chown(tsumufs.fsPathOf(fusepath), perms.uid, perms.gid)
 
     return False
 
@@ -135,23 +135,23 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     fusepath = item.getFilename()
 
     if item.getFileType() != 'dir':
-      os.unlink(tsumufs.nfsPathOf(fusepath))
+      os.unlink(tsumufs.fsPathOf(fusepath))
     else:
-      os.rmdir(tsumufs.nfsPathOf(fusepath))
+      os.rmdir(tsumufs.fsPathOf(fusepath))
 
     return False
 
   def _propogateChange(self, item, change):
     # Rules:
-    #   1. On conflict NFS always wins.
+    #   1. On conflict fs always wins.
     #   2. Loser data always appended as a list of changes in
     #      ${mount}/._${file}.changes
-    #   3. We're no better than NFS
+    #   3. We're no better than fs
 
     # Steps:
     #   1. Stat both files, and verify the file type is identical.
-    #   2. Read in the regions from NFS.
-    #   3. Compare the regions between the changes and NFS.
+    #   2. Read in the regions from fs.
+    #   3. Compare the regions between the changes and fs.
     #   4. If any changes differ, the entire set is conflicted.
     #      4a. Create a conflict change file and write out the changes
     #          that differ.
@@ -161,25 +161,25 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     #      4d. Invalidate dirent cache for the file's containing dir.
     #      4e. Invalidate the stat cache fo that file.
     #   5. Otherwise:
-    #      4a. Iterate over each change and write it out to NFS.
+    #      4a. Iterate over each change and write it out to fs.
 
     fusepath   = item.getFilename()
     self._debug('Fuse path is %s' % fusepath)
 
-    nfs_stat   = os.lstat(tsumufs.nfsPathOf(fusepath))
+    fs_stat   = os.lstat(tsumufs.fsPathOf(fusepath))
     cache_stat = os.lstat(tsumufs.cachePathOf(fusepath))
 
-    self._debug('Validating data hasn\'t changed on NFS.')
-    if stat.S_IFMT(nfs_stat.st_mode) != stat.S_IFMT(cache_stat.st_mode):
+    self._debug('Validating data hasn\'t changed on fs.')
+    if stat.S_IFMT(fs_stat.st_mode) != stat.S_IFMT(cache_stat.st_mode):
       self._debug('File type has completely changed -- conflicted.')
       return True
-    elif nfs_stat.st_ino != item.getInum():
+    elif fs_stat.st_ino != item.getInum():
       self._debug('Inode number changed -- conflicted.')
       return True
     else:
       # Iterate over each region, and verify the changes
       for region in change.getDataChanges():
-        data = tsumufs.nfsMount.readFileRegion(fusepath,
+        data = tsumufs.fsBackend.readFileRegion(fusepath,
                                                region.getStart(),
                                                region.getEnd()-region.getStart())
 
@@ -212,14 +212,14 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
                   % (fusepath, region.getStart(),
                      region.getEnd(), repr(data)))
 
-      tsumufs.nfsMount.writeFileRegion(fusepath,
+      tsumufs.fsBackend.writeFileRegion(fusepath,
                                        region.getStart(),
                                        region.getEnd(),
                                        data)
 
     # Propogate truncations
-    if (cache_stat.st_size < nfs_stat.st_size):
-      tsumufs.nfsMount.truncateFile(fusepath, cache_stat.st_size)
+    if (cache_stat.st_size < fs_stat.st_size):
+      tsumufs.fsBackend.truncateFile(fusepath, cache_stat.st_size)
 
     # TODO(writeback): Add in metadata syncing here.
     return False
@@ -228,8 +228,8 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     # TODO(conflicts): Verify inode numbers here
     oldfusepath = item.getOldFilename()
     newfusepath = item.getNewFilename()
-    os.rename(tsumufs.nfsPathOf(item.getOldFilename()),
-              tsumufs.nfsPathOf(item.getNewFilename()))
+    os.rename(tsumufs.fsPathOf(item.getOldFilename()),
+              tsumufs.fsPathOf(item.getNewFilename()))
 
     return False
 
@@ -450,14 +450,14 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         self._debug('TsumuFS not unmounted yet.')
 
         time.sleep(2)
-        while (not tsumufs.nfsMount.pingServerOK()
+        while (not tsumufs.fsBackend.pingServerOK()
                and not tsumufs.unmounted.isSet()):
           
-          self._debug('sorry, NFS unvailable')
+          self._debug('sorry, fs unvailable')
           time.sleep(5)
          
-        while (tsumufs.nfsMount.pingServerOK()
-               and not os.path.ismount(tsumufs.nfsMountPoint)
+        while (tsumufs.fsBackend.pingServerOK()
+               and not os.path.ismount(tsumufs.fsMountPoint)
                and not tsumufs.unmounted.isSet()):  
           self._attemptMount()
           time.sleep(5)
@@ -466,7 +466,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
           self._debug('User requested sync pause. Sleeping.')
           time.sleep(5)
 
-        while (tsumufs.nfsMount.nfsCheckOK()
+        while (tsumufs.fsBackend.fsCheckOK()
                and not tsumufs.unmounted.isSet()
                and not tsumufs.syncPause.isSet()):
           try:
@@ -507,25 +507,25 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
             self._debug('Caught an IOError in the middle of handling a change: '
                         '%s' % str(e))
 
-            self._debug('Disconnecting from NFS.')
-            tsumufs.nfsAvailable.clear()
-            tsumufs.nfsMount.unmount()
+            self._debug('Disconnecting from fs.')
+            tsumufs.fsAvailable.clear()
+            tsumufs.fsBackend.unmount()
 
             self._debug('Not removing change from the synclog, but finishing.')
             tsumufs.syncLog.finishedWithChange(item, remove_item=False)
 
       self._debug('Shutdown requested.')
-      self._debug('Unmounting NFS.')
+      self._debug('Unmounting fs.')
 
       try:
-        #No need to umount NFSMountPath in my application  
-        #tsumufs.nfsMount.unmount()
+        #No need to umount fsMountPath in my application  
+        #tsumufs.fsMount.unmount()
         pass
       except:
-        self._debug('Unable to unmount NFS -- caught an exception.')
+        self._debug('Unable to unmount fs -- caught an exception.')
         tsumufs.syslogCurrentException()
       else:
-        self._debug('NFS unmount complete.')
+        self._debug('fs unmount complete.')
 
       self._debug('Saving synclog to disk.')
 
@@ -570,8 +570,8 @@ def xattr_forceDisconnect(type_, path, value=None):
         tsumufs.forceDisconnect.clear()
       elif value == '1':
         tsumufs.forceDisconnect.set()
-        tsumufs.nfsMount.unmount()
-        tsumufs.nfsAvailable.clear()
+        tsumufs.fsBackend.unmount()
+        tsumufs.fsAvailable.clear()
       else:
         return -errno.EOPNOTSUPP
       return
@@ -588,7 +588,7 @@ def xattr_connected(type_, path, value=None):
   if value != None:
     return -errno.EOPNOTSUPP
 
-  if tsumufs.nfsAvailable.isSet():
+  if tsumufs.fsAvailable.isSet():
     return '1'
 
   return '0'

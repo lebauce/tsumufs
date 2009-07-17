@@ -23,9 +23,16 @@ FUNC_TESTS     := $(shell echo $(FUNC_TEST_SRC) |sed -e 's/\.c//g')
 UMOUNT_CMD     := sudo umount
 FUMOUNT_CMD    := fusermount -u
 
-TEST_DIR       := /tmp/tsumufs-test-nfs-dir
+TEST_NFS_DIR    := /tmp/tsumufs-test-nfs-dir
+MOUNT_NFS_DIR   := /mnt/nfs
+
+TEST_SAMBA_DIR  := /tmp/tsumufs-test-samba-dir
+MOUNT_SAMBA_DIR := /mnt/samba
+
+TEST_SSHFS_DIR  := /tmp/tsumufs-test-sshfs-dir
+MOUNT_SSHFS_DIR := /mnt/sshfs
+
 TEST_CACHE_DIR := /tmp/tsumufs-cache-dir
-TEST_NFS_DIR   := /mnt/nfs
 
 PYTHON   := $(shell which python)
 DESTDIR  := /
@@ -106,8 +113,22 @@ megabast:
 bast: $(TEST_DIR) $(TEST_CACHE_DIR)
 #######	src/tsumufs -l 0 -o nfsmountpoint=/mnt/nfs,cachebasedir=/tmp/tsumufs-cache-dir,nfsmountcmd=true 192.168.1.4:/home /tmp/tsumufs-test1-dir
 	
-	src/tsumufs -l 0 -o nfsmountpoint=$(TEST_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(NFSHOME) $(TEST_DIR)
+	src/tsumufs -l 0 -o nfsmountpoint=$(MOUNT_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(NFSHOME) $(TEST_DIR)
 	
+nfs: $(TEST_NFS_DIR) $(TEST_CACHE_DIR)
+	src/tsumufs -l 0 -o fsmountpoint=$(MOUNT_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(NFSHOME) $(TEST_NFS_DIR) nfs
+
+samba:$(TEST_SAMBA_DIR) $(TEST_CACHE_DIR)
+	src/tsumufs -l 0 -o fsmountpoint=$(MOUNT_SAMBA_DIR),cachebasedir=$(TEST_CACHE_DIR) $(SAMBAHOME) $(TEST_SAMBA_DIR) samba
+	
+sshfs:$(TEST_SSHFS_DIR) $(TEST_CACHE_DIR)
+	src/tsumufs -l 0 -o fsmountpoint=$(MOUNT_SSHFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(SSHFSHOME) $(TEST_SSHFS_DIR) sshfs	
+	
+	
+shutdown:
+	-$(UMOUNT_CMD) $(TEST_NFS_DIR)
+	-rmdir $(TEST_NFS_DIR)
+
 #	cd $(TEST_DIR);             \
 	CACHE_DIR=$(TEST_CACHE_DIR) \
 	NFS_DIR=$(TEST_NFS_DIR)     \
@@ -133,6 +154,14 @@ $(TEST_CACHE_DIR):
 
 $(TEST_NFS_DIR):
 	mkdir -p $(TEST_NFS_DIR)
+	chown $(USER):$(shell id -g) $(TEST_CACHE_DIR)
+	
+$(TEST_SAMBA_DIR):
+	mkdir -p $(TEST_SAMBA_DIR)
+	chown $(USER):$(shell id -g) $(TEST_CACHE_DIR)
+	
+$(TEST_SSHFS_DIR):
+	mkdir -p $(TEST_SSHFS_DIR)
 	chown $(USER):$(shell id -g) $(TEST_CACHE_DIR)
 
 functional-tests: test-environment clean $(FUNC_TESTS) $(TEST_DIR) $(TEST_CACHE_DIR) $(TEST_NFS_DIR)

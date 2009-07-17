@@ -14,7 +14,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-'''TsumuFS, a NFS-based caching filesystem.'''
+'''TsumuFS, a fs-based caching filesystem.'''
 
 import os
 import sys
@@ -57,7 +57,6 @@ class FuseFile(tsumufs.Debuggable):
     self._pid = pid
 
     self._setName('FuseFile <%s> ' % self._path)
-
     # NOTE: If mode == None, then we were called as a creat(2) system call,
     # otherwise we were called as an open(2) system call.
 
@@ -152,6 +151,7 @@ class FuseFile(tsumufs.Debuggable):
 
   @benchmark
   def write(self, new_data, offset):
+
     self._debug('opcode: write | path: %s | offset: %d | buf: %s'
                 % (self._path, offset, repr(new_data)))
 
@@ -160,11 +160,10 @@ class FuseFile(tsumufs.Debuggable):
     #   - The file existed, but was extended.
     #   - The file existed, and an existing block was overwritten.
 
-    nfspath = tsumufs.nfsPathOf(self._path)
+    fspath = tsumufs.fsPathOf(self._path)
     statgoo = tsumufs.cacheManager.statFile(self._path)
-
     try:
-      inode = tsumufs.NameToInodeMap.nameToInode(nfspath)
+      inode = tsumufs.NameToInodeMap.nameToInode(fspath)
     except KeyError, e:
       try:
         inode = statgoo.st_ino
@@ -180,7 +179,7 @@ class FuseFile(tsumufs.Debuggable):
                                                os.O_RDONLY)
       self._debug('From cacheManager.readFile got %s' % repr(old_data))
 
-      # Pad missing chunks on the old_data stream with NULLs, as NFS
+      # Pad missing chunks on the old_data stream with NULLs, as fs
       # would. Unfortunately during resyncing, we'll have to consider regions
       # past the end of a file to be NULLs as well. This allows us to merge data
       # regions cleanly without rehacking the model.
@@ -216,7 +215,7 @@ class FuseFile(tsumufs.Debuggable):
     except IOError, e:
       self._debug('IOError caught: %s' % str(e))
 
-      # TODO(jtg): Make this stop the NFS Mount condition on error, rather than
+      # TODO(jtg): Make this stop the fs Mount condition on error, rather than
       # raising errno.
       return -e.errno
 
@@ -224,7 +223,7 @@ class FuseFile(tsumufs.Debuggable):
   def release(self, flags):
     self._debug('opcode: release | flags: %s' % flags)
 
-    # Noop since on NFS close doesn't do much
+    # Noop since on fs close doesn't do much
     return 0
 
   @benchmark
@@ -262,7 +261,7 @@ class FuseFile(tsumufs.Debuggable):
 
       # Get inode number
       try:
-        inum = tsumufs.NameToInodeMap.nameToInode(tsumufs.nfsPathOf(self._path))
+        inum = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(self._path))
       except KeyError, e:
         try:
           inum = statgoo.st_ino

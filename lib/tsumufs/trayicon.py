@@ -17,7 +17,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-'''TsumuFS, a NFS-based caching filesystem.'''
+'''TsumuFS, a fs-based caching filesystem.'''
 
 import os
 import os.path
@@ -79,7 +79,7 @@ class TrayIconThread(tsumufs.Debuggable, threading.Thread):
             
     
     self._updateIcon()
-    gobject.timeout_add(2000, self._timer)
+    gobject.timeout_add(500, self._timer)
     
    
     self._debug('Setting up thread state.')
@@ -117,7 +117,7 @@ class TrayIconThread(tsumufs.Debuggable, threading.Thread):
     old_isConflicted = self._isConflicted
     old_isSynchronized = self._isSynchronized
       
-    if tsumufs.nfsAvailable.isSet():
+    if tsumufs.fsAvailable.isSet():
         TrayIconThread._isConnected = True
     else:
         TrayIconThread._isConnected = False
@@ -149,7 +149,7 @@ class TrayIconThread(tsumufs.Debuggable, threading.Thread):
     if tsumufs.syncWork.isSet():
         #(_("...")) is for gettext module in goal to traduct in french or other languages
         item1 = gtk.ImageMenuItem(_("Synchronized.."))
-    elif tsumufs.nfsAvailable.isSet():
+    elif tsumufs.fsAvailable.isSet():
         item1 = gtk.ImageMenuItem(_("Connected.."))
     else:
         item1 = gtk.ImageMenuItem(_("Disconnected.."))

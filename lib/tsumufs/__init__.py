@@ -14,7 +14,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-'''TsumuFS, a NFS-based caching filesystem.'''
+'''TsumuFS, a fs-based caching filesystem.'''
 
 import threading
 import pwd
@@ -27,7 +27,6 @@ import grp
 
 from debuggable import *
 from cachemanager import *
-from nfsmount import *
 from synclog import *
 from fusefile import *
 from fusethread import *
@@ -41,7 +40,15 @@ from permissionsoverlay import *
 from extendedattributes import *
 from metrics import *
 
+from fsBackend import *
+from nfsBackend import *
+from sambaBackend import *
+from sshfsBackend import *
 
+from pynfs.nfs4constants import *
+from pynfs.nfs4types import *
+import pynfs.nfs4lib
+#import pynfs
 __version__ = (0, 14)
 
 debugMode = True
@@ -54,11 +61,12 @@ mountSource  = None
 mountPoint   = None
 mountOptions = None
 
-nfsBaseDir    = '/var/lib/tsumufs/nfs'
-nfsMountPoint = '/mnt/nfs'
-nfsMountCmd   = 'sudo /bin/mount -t nfs'
-nfsUnmountCmd = '/bin/umount'
-nfsMount      = None
+fsBaseDir    = None
+fsMountPoint = None
+fsMountCmd   = None
+fsUnmountCmd = '/bin/umount'
+fsMount      = None
+fsType       = None
 
 cacheBaseDir = '/var/cache/tsumufs'
 cacheSpecDir = '/var/lib/tsumufs/cachespec'
@@ -73,11 +81,13 @@ synclogPath = None
 permsOverlay = None
 permsPath = None
 
+fsBackend = None
+
 icon = None
 socketDir = '/var/run/tsumufs'
 
 unmounted       = threading.Event()
-nfsAvailable    = threading.Event()
+fsAvailable     = threading.Event()
 forceDisconnect = threading.Event()
 syncPause       = threading.Event()
 syncWork        = threading.Event()
@@ -110,13 +120,13 @@ def syslogExceptHook(type, value, tb):
                   % line)
 
 
-def nfsPathOf(fusepath):
+def fsPathOf(fusepath):
   '''
   Quick one-off method to help with translating FUSE-side pathnames
   to VFS pathnames.
 
   Returns:
-  A string containing the absolute path to the file on the NFS
+  A string containing the absolute path to the file on the fs
   mount.
 
   Raises:
@@ -129,7 +139,7 @@ def nfsPathOf(fusepath):
   else:
     rhs = fusepath
 
-  transpath = os.path.join(tsumufs.nfsMountPoint, rhs)
+  transpath = os.path.join(tsumufs.fsMountPoint, rhs)
   return transpath
 
 

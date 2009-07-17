@@ -14,7 +14,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-'''TsumuFS, a NFS-based caching filesystem.'''
+'''TsumuFS, a fs-based caching filesystem.'''
 
 import os
 import os.path
@@ -30,6 +30,8 @@ gettext.install('TsumuFS', 'locale', unicode=1)
 
 import fuse
 from fuse import Fuse
+
+
 
 import tsumufs
 from extendedattributes import extendedattribute
@@ -85,11 +87,16 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
-    # Setup the NFSMount object for both sync and mount threads to
-    # access raw NFS with.
-    self._debug('Initializing nfsMount proxy.')
+    # Setup the fsMount object for both sync and mount threads to
+    # access raw fs with.
+    self._debug('Initializing fsMount proxy.')
     try:
-      tsumufs.nfsMount = tsumufs.NFSMount()
+      if tsumufs.fsType == 'nfs':
+          tsumufs.fsBackend = tsumufs.NFSBackend()
+      elif tsumufs.fsType == 'samba':
+          tsumufs.fsBackend = tsumufs.SAMBABackend()
+      elif tsumufs.fsType == 'sshfs':
+          tsumufs.fsBackend = tsumufs.SSHFSBackend()
     except:
       # TODO(jtg): Erm... WHY can't we call tsumufs.syslogExceptHook here? O.o
       exc_info = sys.exc_info()
@@ -103,7 +110,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         self._debug('***    %s(%d) in %s: %s' % line)
 
       return False
-
+    
     self._debug('Initializing trayIcon thread.')
     self._iconThread = None
     try:
@@ -111,7 +118,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       self._iconThread = trayicon.TrayIconThread()
     except:
       exc_info = sys.exc_info()
-
+    
     # Initialize our threads
     self._debug('Initializing sync thread.')
     try:
@@ -119,7 +126,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     except:
       # TODO(jtg): Same as above... We should really fix this.
       exc_info = sys.exc_info()
-
+    
       self._debug('*** Unhandled exception occurred')
       self._debug('***     Type: %s' % str(exc_info[0]))
       self._debug('***    Value: %s' % str(exc_info[1]))
@@ -131,9 +138,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       return False
 
     # Start the threads
+
     if self._iconThread:
         self._debug('Starting Icon thread.')
         self._iconThread.start()
+
     self._debug('Starting sync thread.')
     self._syncThread.start()
 
@@ -166,9 +175,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     result = Fuse.main(self, args)
     self._debug('Fuse main event loop exited.')
 
+
     self._debug('Setting event and condition states.')
     tsumufs.unmounted.set()
-    tsumufs.nfsAvailable.clear()
+    tsumufs.fsAvailable.clear()
     tsumufs.syncWork.clear()
     tsumufs.syncPause.clear()
 
@@ -176,6 +186,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._syncThread.join()
 
     self._debug('Shutdown complete.')
+    self._debug("---BEGIN-GEN-BENCHMARK-REPORT---")
+    metrics=""
+    for key in tsumufs.metrics._metrics.keys():
+      self._debug(" %s: %s " % (str(key) , str(tsumufs.metrics._metrics[key])))
+    self._debug("---END-GEN-BENCHMARK-REPORT---")
 
     return result
 
@@ -193,7 +208,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
             hash.
 
         mountSource:
-            The NFS path to mount from.
+            The fs path to mount from.
 
         mountPoint:
             The local path to mount TsumuFS on.
@@ -209,26 +224,26 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                     dash_s_do='undef')
 
     # Add in the named options we care about.
-    self.parser.add_option(mountopt='nfsbasedir',
-                           dest='nfsBaseDir',
-                           default='/var/lib/tsumufs/nfs',
-                           help=('Set the NFS mount base directory [default: '
+    self.parser.add_option(mountopt='fsbasedir',
+                           dest='fsBaseDir',
+                           default='/var/lib/tsumufs/fs',
+                           help=('Set the fs mount base directory [default: '
                                  '%default]'))
-    self.parser.add_option(mountopt='nfsmountpoint',
-                           dest='nfsMountPoint',
+    self.parser.add_option(mountopt='fsmountpoint',
+                           dest='fsMountPoint',
                            default=None,
-                           help=('Set the directory name of the nfs mount '
+                           help=('Set the directory name of the fs mount '
                                  'point [default: calculated based upon the '
                                  'source]'))
-    self.parser.add_option(mountopt='nfsmountcmd',
-                           dest='nfsMountCmd',
+    self.parser.add_option(mountopt='fsmountcmd',
+                           dest='fsMountCmd',
                            default='/usr/bin/sudo -u root /bin/mount -t nfs',
-                           help=('Set the NFS mount command '
+                           help=('Set the fs mount command '
                                  '[default: %default]'))
-    self.parser.add_option(mountopt='nfsunmountcmd',
-                           dest='nfsUnmountCmd',
+    self.parser.add_option(mountopt='fsunmountcmd',
+                           dest='fsUnmountCmd',
                            default='/usr/bin/sudo -u root /bin/umount %s',
-                           help=('Set the NFS unmount command '
+                           help=('Set the fs unmount command '
                                  '[default: %default]'))
     self.parser.add_option(mountopt='cachebasedir',
                            dest='cacheBaseDir',
@@ -250,7 +265,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            dest='mountOptions',
                            default=None,
                            help=('A comma-separated list of key-value '
-                                 'pairs that adjust how the NFS mount '
+                                 'pairs that adjust how the fs mount '
                                  'point is mounted. [default: '
                                  '%default]'))
 
@@ -266,6 +281,17 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                  'Only useful if you also specify '
                                  '-f. Typically only useful to '
                                  'developers.'))
+    self.parser.add_option('-b',
+                           action='callback',
+                           callback=lambda *args: self.fuse_args.add('blksize'),
+                           help=('Fuse will work on bigger regions than 4Kbytes'))    
+    '''
+    self.parser.add_option('-i',
+                           dest='blksizzzzzzzzzze',
+                           action='store',
+                           type='int',
+                           help='Fuse will work on bigger regions than 4Kbytes')
+    '''
     self.parser.add_option('-d', '--debug',
                            dest='debugMode',
                            action='store_true',
@@ -281,15 +307,31 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self.parse(values=tsumufs, errex=1)
 
     # Verify we have a source and destination to mount.
-    if len(self.cmdline[1]) != 2:
+    if len(self.cmdline[1]) != 3:
       sys.stderr.write(('%s: invalid number of arguments provided: '
-                       'expecting source and destination.\n') %
+                       'expecting source, destination and file system type.\n') %
                        tsumufs.progName)
       sys.exit(1)
 
     # Pull out the source and point
     tsumufs.mountSource = self.cmdline[1][0]
     tsumufs.mountPoint  = self.cmdline[1][1]
+    tsumufs.fsType      = self.cmdline[1][2]
+    
+    if tsumufs.fsType == 'nfs':
+      tsumufs.fsMountCmd   = 'sudo /bin/mount -t nfs'
+      tsumufs.fsBaseDir    = '/var/lib/tsumufs/nfs'
+      tsumufs.fsMountPoint = '/mnt/nfs'
+
+    elif tsumufs.fsType == 'samba':
+      tsumufs.fsMountCmd   = 'sudo /bin/mount -t cifs -o username=haksan,password=3045wz'
+      tsumufs.fsBaseDir    = '/var/lib/tsumufs/samba'
+      tsumufs.fsMountPoint = '/mnt/samba'
+      
+    elif tsumufs.fsType == 'sshfs':
+      tsumufs.fsMountCmd   = 'sshfs'
+      tsumufs.fsBaseDir    = '/var/lib/tsumufs/sshfs'
+      tsumufs.fsMountPoint = '/mnt/sshfs'
 
     # Make sure the source and point don't contain trailing slashes.
     if tsumufs.mountSource[-1] == '/':
@@ -305,8 +347,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self.fuse_args.mountpoint = tsumufs.mountPoint
 
     # Finally, calculate the runtime paths if they weren't specified already.
-    if tsumufs.nfsMountPoint == None:
-      tsumufs.nfsMountPoint = os.path.join(tsumufs.nfsBaseDir,
+    if tsumufs.fsMountPoint == None:
+      tsumufs.fsMountPoint = os.path.join(tsumufs.fsBaseDir,
                                            tsumufs.mountPoint.replace('/', '-'))
 
     if tsumufs.cachePoint == None:
@@ -320,8 +362,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     tsumufs.permsPath = os.path.abspath(os.path.join(tsumufs.cachePoint,
                                                      '../permissions.ovr'))
 
+    self._debug('fsType is %s' % tsumufs.fsType)
     self._debug('mountPoint is %s' % tsumufs.mountPoint)
-    self._debug('nfsMountPoint is %s' % tsumufs.nfsMountPoint)
+    self._debug('fsMountPoint is %s' % tsumufs.fsMountPoint)
+    self._debug('fsMountCmd is %s' % tsumufs.fsMountCmd)
     self._debug('cacheBaseDir is %s' % tsumufs.cacheBaseDir)
     self._debug('cachePoint is %s' % tsumufs.cachePoint)
     self._debug('synclogPath is %s' % tsumufs.synclogPath)
@@ -412,7 +456,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       The string the extended attribute contains if size > 0
       -EOPNOTSUPP if the name is invalid.
     '''
-
     self._debug('opcode: getxattr | path: %s | name: %s | size: %d'
                 % (path, name, size))
 
@@ -691,7 +734,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     file_stat = tsumufs.cacheManager.statFile(path)
 
     try:
-      inode = tsumufs.NameToInodeMap.nameToInode(nfspath)
+      inode = tsumufs.NameToInodeMap.nameToInode(fspath)
     except KeyError, e:
       try:
         inode = file_stat.st_ino
@@ -946,8 +989,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: statfs')
 
     try:
-      if tsumufs.nfsAvailable.isSet():
-        return os.statvfs(tsumufs.nfsMountPoint)
+      if tsumufs.fsAvailable.isSet():
+        return os.statvfs(tsumufs.fsMountPoint)
       else:
         return os.statvfs(tsumufs.cacheBaseDir)
     except OSError, e:

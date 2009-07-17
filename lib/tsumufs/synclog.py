@@ -14,7 +14,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-'''TsumuFS, a NFS-based caching filesystem.'''
+'''TsumuFS, a fs-based caching filesystem.'''
 
 import os
 import os.path
@@ -25,7 +25,7 @@ import threading
 
 import tsumufs
 from extendedattributes import extendedattribute
-
+from metrics import benchmark
 
 class SyncConflictError(Exception):
   '''
@@ -71,11 +71,13 @@ class SyncLog(tsumufs.Debuggable):
   _lock            = threading.RLock()
   _checkpointer    = None
 
+  @benchmark
   def __init__(self):
     self._checkpointer = threading.Timer(tsumufs.checkpointTimeout,
                                          self.checkpoint)
     self._checkpointer.start()
 
+  @benchmark
   def __str__(self):
     inodechange_str = repr(self._inodeChanges)
     syncqueue_str   = repr(self._syncQueue)
@@ -87,7 +89,8 @@ class SyncLog(tsumufs.Debuggable):
                       syncqueue_str))
 
     return string
-
+  
+  @benchmark
   def loadFromDisk(self):
     '''
     Load the internal state of the SyncLog from disk and initialize
@@ -122,6 +125,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def flushToDisk(self):
     '''
     Save the sync queue and inode hashes to disk.
@@ -152,6 +156,7 @@ class SyncLog(tsumufs.Debuggable):
       fp.close()
       self._lock.release()
 
+  @benchmark
   def isNewFile(self, fusepath):
     '''
     Check to see if fusepath is a file the user created locally.
@@ -176,6 +181,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def isUnlinkedFile(self, fusepath):
     '''
     Check to see if fusepath is a file that was unlinked previously.
@@ -203,12 +209,13 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def isFileDirty(self, fusepath):
     '''
     Check to see if the cached copy of a file is dirty.
 
     Note that this does a shortcut test -- if the file in local cache exists and
-    the file on nfs does not, then we assume the cached copy is
+    the file on fs does not, then we assume the cached copy is
     dirty. Otherwise, we have to check against the synclog to see what's changed
     (if at all).
 
@@ -231,6 +238,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def addNew(self, type_, **params):
     '''
     Add a change for a new file to the queue.
@@ -257,6 +265,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def checkpoint(self):
     self._debug('Checkpointing synclog...')
 
@@ -268,6 +277,7 @@ class SyncLog(tsumufs.Debuggable):
     self._debug('...complete. Next checkpoint in %d seconds.'
                 % tsumufs.checkpointTimeout)
 
+  @benchmark
   def addLink(self, inum, filename):
     try:
       self._lock.acquire()
@@ -277,6 +287,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def addUnlink(self, filename, type_):
     '''
     Add a change to unlink a file. Additionally removes all previous changes in
@@ -346,6 +357,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def addChange(self, fname, inum, start, end, data):
     try:
       self._lock.acquire()
@@ -363,6 +375,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def addMetadataChange(self, fname, inum):
     '''
     Metadata changes are synced automatically when there is a SyncItem change
@@ -383,6 +396,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def truncateChanges(self, fusepath, size):
     try:
       self._lock.acquire()
@@ -398,6 +412,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def addRename(self, inum, old, new):
     self._lock.acquire()
 
@@ -417,6 +432,7 @@ class SyncLog(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  @benchmark
   def popChange(self):
     self._lock.acquire()
 
@@ -439,16 +455,17 @@ class SyncLog(tsumufs.Debuggable):
     # Ensure the appropriate locks are locked
     if syncitem.getType() in ('new', 'link', 'unlink', 'change'):
       tsumufs.cacheManager.lockFile(syncitem.getFilename())
-      tsumufs.nfsMount.lockFile(syncitem.getFilename())
+      tsumufs.fsBackend.lockFile(syncitem.getFilename())
 
     elif syncitem.getType() in ('rename'):
       tsumufs.cacheManager.lockFile(syncitem.getNewFilename())
-      tsumufs.nfsMount.lockFile(syncitem.getNewFilename())
+      tsumufs.fsBackend.lockFile(syncitem.getNewFilename())
       tsumufs.cacheManager.lockFile(syncitem.getOldFilename())
-      tsumufs.nfsMount.lockFile(syncitem.getOldFilename())
+      tsumufs.fsBackend.lockFile(syncitem.getOldFilename())
 
     return (syncitem, change)
 
+  @benchmark
   def finishedWithChange(self, syncitem, remove_item=True):
     self._lock.acquire()
 
@@ -456,12 +473,12 @@ class SyncLog(tsumufs.Debuggable):
       # Ensure the appropriate locks are unlocked
       if syncitem.getType() in ('new', 'link', 'unlink', 'change'):
         tsumufs.cacheManager.unlockFile(syncitem.getFilename())
-        tsumufs.nfsMount.unlockFile(syncitem.getFilename())
+        tsumufs.fsBackend.unlockFile(syncitem.getFilename())
       elif syncitem.getType() in ('rename'):
         tsumufs.cacheManager.unlockFile(syncitem.getNewFilename())
-        tsumufs.nfsMount.unlockFile(syncitem.getNewFilename())
+        tsumufs.fsBackend.unlockFile(syncitem.getNewFilename())
         tsumufs.cacheManager.unlockFile(syncitem.getOldFilename())
-        tsumufs.nfsMount.unlockFile(syncitem.getOldFilename())
+        tsumufs.fsBackend.unlockFile(syncitem.getOldFilename())
 
       # Remove the item from the worklog.
       if remove_item:
