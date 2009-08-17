@@ -115,10 +115,10 @@ bast: $(TEST_DIR) $(TEST_CACHE_DIR)
 	
 	src/tsumufs -l 0 -o nfsmountpoint=$(MOUNT_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(NFSHOME) $(TEST_DIR)
 	
-nfs: $(TEST_NFS_DIR) $(TEST_CACHE_DIR)
+nfs: $(TEST_CACHE_DIR) $(TEST_NFS_DIR)
 	src/tsumufs -l 0 -o fsmountpoint=$(MOUNT_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(NFSHOME) $(TEST_NFS_DIR) nfs
 
-samba:$(TEST_SAMBA_DIR) $(TEST_CACHE_DIR)
+samba:$(TEST_CACHE_DIR) $(TEST_SAMBA_DIR) 
 	src/tsumufs -l 0 -o fsmountpoint=$(MOUNT_SAMBA_DIR),cachebasedir=$(TEST_CACHE_DIR) $(SAMBAHOME) $(TEST_SAMBA_DIR) samba
 	
 sshfs:$(TEST_SSHFS_DIR) $(TEST_CACHE_DIR)
@@ -154,7 +154,8 @@ $(TEST_CACHE_DIR):
 
 $(TEST_NFS_DIR):
 	mkdir -p $(TEST_NFS_DIR)
-	chown $(USER):$(shell id -g) $(TEST_CACHE_DIR)
+	chown $(USER):$(shell id -g) $(TEST_NFS_DIR)
+
 	
 $(TEST_SAMBA_DIR):
 	mkdir -p $(TEST_SAMBA_DIR)

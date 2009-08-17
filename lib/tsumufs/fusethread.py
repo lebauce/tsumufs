@@ -171,7 +171,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         tsumufs.FuseFile.__init__(self2, *args, **kwargs)
 
     self.file_class = FuseFileWrapper
-
     result = Fuse.main(self, args)
     self._debug('Fuse main event loop exited.')
 
@@ -237,7 +236,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                  'source]'))
     self.parser.add_option(mountopt='fsmountcmd',
                            dest='fsMountCmd',
-                           default='/usr/bin/sudo -u root /bin/mount -t nfs',
+                           default='/usr/bin/sudo -u root /bin/mount -t nfs4',
                            help=('Set the fs mount command '
                                  '[default: %default]'))
     self.parser.add_option(mountopt='fsunmountcmd',
@@ -281,17 +280,28 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                  'Only useful if you also specify '
                                  '-f. Typically only useful to '
                                  'developers.'))
+
     self.parser.add_option('-b',
                            action='callback',
-                           callback=lambda *args: self.fuse_args.add('blksize'),
+                           callback=lambda *args: self.fuse_args.add('blkdev'),
                            help=('Fuse will work on bigger regions than 4Kbytes'))    
-    '''
-    self.parser.add_option('-i',
-                           dest='blksizzzzzzzzzze',
-                           action='store',
-                           type='int',
-                           help='Fuse will work on bigger regions than 4Kbytes')
-    '''
+    
+
+    self.parser.add_option('-e',
+                           action='callback',
+                           callback=lambda *args: self.fuse_args.add('loop'),
+                           help=('Fuse will work on bigger regions than 4Kbytes'))
+    
+    self.parser.add_option('-c',
+                           action='callback',
+                           callback=lambda *args: self.fuse_args.add('max_write=32768'),
+                           help=('Fuse will work on bigger regions than 4Kbytes')) 
+    
+    self.parser.add_option('-a',
+                           action='callback',
+                           callback=lambda *args: self.fuse_args.add('fsname=/tmp/tsumufs-test-nfs-dir'),
+                           help=('Fuse will work on bigger regions than 4Kbytes'))
+        
     self.parser.add_option('-d', '--debug',
                            dest='debugMode',
                            action='store_true',
@@ -319,7 +329,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     tsumufs.fsType      = self.cmdline[1][2]
     
     if tsumufs.fsType == 'nfs':
-      tsumufs.fsMountCmd   = 'sudo /bin/mount -t nfs'
+      tsumufs.fsMountCmd   = 'sudo /bin/mount -t nfs4'
       tsumufs.fsBaseDir    = '/var/lib/tsumufs/nfs'
       tsumufs.fsMountPoint = '/mnt/nfs'
 

@@ -458,7 +458,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
          
         while (tsumufs.fsBackend.pingServerOK()
                and not os.path.ismount(tsumufs.fsMountPoint)
-               and not tsumufs.unmounted.isSet()):  
+               and not tsumufs.unmounted.isSet()):
           self._attemptMount()
           time.sleep(5)
 

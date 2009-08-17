@@ -59,7 +59,7 @@ syslogOpen = False
 
 mountSource  = None
 mountPoint   = None
-mountOptions = None
+mountOptions = 'sec=krb5p,rw,proto=tcp,resvport'
 
 fsBaseDir    = None
 fsMountPoint = None
