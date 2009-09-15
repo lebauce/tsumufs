@@ -50,12 +50,11 @@ class FSBackend(object):
     Method to lock a file. Blocks if the file is already locked.
 
     Args:
-      filename: The complete pathname to the file to lock.
+      filename: The full pathname of the file to lock.
 
     Returns:
       A boolean value.
     '''
-
 
     try:
       lock = self._fileLocks[filename]
@@ -69,7 +68,7 @@ class FSBackend(object):
     Method to unlock a file.
 
     Args:
-      filename: The complete pathname to the file to unlock.
+      filename: The full pathname of the file to unlock.
 
     Returns:
       A boolean value.
@@ -86,7 +85,7 @@ class FSBackend(object):
 
   def fsCheckOK(self):
     '''
-    Method to verify that the File System server is available and mounting
+    Method to verify that the File System server is available and mounted
     '''
     if self.pingServerOK() and os.path.ismount(tsumufs.fsMountPoint):
       tsumufs.fsAvailable.set()  

@@ -39,28 +39,19 @@ class NFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
   _ncl = None
 
   def __init__(self):
+    self.server_ip = tsumufs.mountSource.split(":")[0]
+    self.server_port = 2049
     pass
-  
 
   def pingServerOK(self):
-    '''
-    Method to verify that the NFS server is available.
-    
-    import subprocess
-    import os
-    retval=subprocess.call('/home/megabast/Documents/tsumuFS/tsumufs-read-only/lib/tsumufs/PingServer.sh')
-    if retval == 0:
-      return True
-    else:
-       return False
-    '''
     try:
       kwargs = {}
       if os.getenv("PYNFS_UID"):
         kwargs["uid"] = int(os.getenv("PYNFS_UID"))
       if os.getenv("PYNFS_GID"):
         kwargs["gid"] = int(os.getenv("PYNFS_GID"))
-      self._ncl = nfs4lib.create_client("192.168.1.4", 2049, "tcp", **kwargs)
+      self._debug('nfs4lib.create_client(' + self.server_ip + ', self.server_port, "tcp", **kwargs)')
+      self._ncl = nfs4lib.create_client(self.server_ip, self.server_port, "tcp", **kwargs)
     except socket.error, e:
         return False
     return True

@@ -31,8 +31,6 @@ gettext.install('TsumuFS', 'locale', unicode=1)
 import fuse
 from fuse import Fuse
 
-
-
 import tsumufs
 from extendedattributes import extendedattribute
 from metrics import benchmark
@@ -119,6 +117,16 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     except:
       exc_info = sys.exc_info()
     
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
+      return False
+
     # Initialize our threads
     self._debug('Initializing sync thread.')
     try:
@@ -331,7 +339,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     if tsumufs.fsType == 'nfs':
       tsumufs.fsMountCmd   = 'sudo /bin/mount -t nfs4'
       tsumufs.fsBaseDir    = '/var/lib/tsumufs/nfs'
-      tsumufs.fsMountPoint = '/mnt/nfs'
+      tsumufs.fsMountPoint = '/var/tsumufs/nfs'
 
     elif tsumufs.fsType == 'samba':
       tsumufs.fsMountCmd   = 'sudo /bin/mount -t cifs -o username=haksan,password=3045wz'

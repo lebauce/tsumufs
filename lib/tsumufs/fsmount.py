@@ -82,20 +82,6 @@ class FSMount(tsumufs.Debuggable):
 
     self._fileLocks[filename].release()
 
-  def pingServerOK(self):
-    '''
-    Method to verify that the FS server is available.
-    '''
-    import subprocess
-    import os
-    retval=subprocess.call('/home/megabast/Documents/tsumuFS/tsumufs-read-only/lib/tsumufs/PingServer.sh')
-    
-    
-    if retval == 0:
-      return True
-    else:
-       return False
-    
 
   def fsCheckOK(self):
     '''

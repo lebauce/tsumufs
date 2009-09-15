@@ -35,6 +35,8 @@ class SSHFSBackendError(Exception):
 class SSHFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
 
   def __init__(self):
+    self.server_ip = tsumufs.mountSource.slit(":")[0]
+    self.server_port = 22
     pass
 
   def pingServerOK(self):
@@ -43,10 +45,11 @@ class SSHFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
     '''
     try:
       PySocket = socket (AF_INET,SOCK_DGRAM)
-      PySocket.connect (('192.168.1.4',22))
+      PySocket.connect ((self.server_ip, self.server_port))
     except socket.error, e:
         PySocket.close()
         return False
+
     PySocket.close()
     return True
         
