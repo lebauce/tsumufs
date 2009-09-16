@@ -208,7 +208,7 @@ class TrayIconThread(tsumufs.Debuggable, threading.Thread):
             submenu.append(subitem)
             subitem.show()
     else:
-        file = (_("No files in wait"))
+        file = (_("No files queued"))
         subitem = gtk.MenuItem(str(file))
         submenu.append(subitem)
         subitem.show()

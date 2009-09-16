@@ -81,18 +81,18 @@ class FSBackend(object):
     self._fileLocks[filename].release()
 
   def pingServerOK(self):
-      return "not yet implemented"
+    return "not yet implemented"
 
   def fsCheckOK(self):
     '''
     Method to verify that the File System server is available and mounted
     '''
     if self.pingServerOK() and os.path.ismount(tsumufs.fsMountPoint):
-      tsumufs.fsAvailable.set()  
+      tsumufs.fsAvailable.set()
       return True
-    else:
-      tsumufs.fsAvailable.clear()
-      return False
+
+    tsumufs.fsAvailable.clear()
+    return False
 
   def readFileRegion(self, filename, start, end):
     '''
@@ -229,6 +229,11 @@ class FSBackend(object):
     the mount(8) command to do its dirty work.
     '''
 
+    cmd = tsumufs.fsMountCmd
+    if cmd == None:
+        self._debug('Mount of file system managed by peer')
+        return False
+
     try:
       os.stat(tsumufs.fsMountPoint)
     except OSError, e:
@@ -248,7 +253,6 @@ class FSBackend(object):
         return False
 
     try:
-      cmd = tsumufs.fsMountCmd
       if tsumufs.mountOptions != None:
         cmd += ' -o ' + tsumufs.mountOptions
       cmd += ' ' + tsumufs.mountSource + ' ' + tsumufs.fsMountPoint
@@ -272,9 +276,14 @@ class FSBackend(object):
     somewhere else on the filesystem.
     '''
 
+    cmd = tsumufs.fsUnmountCmd
+    if cmd == None:
+        self._debug('Umount of file system managed by peer')
+        return False
+
     self._debug('Unmounting file system mount from %s' %
                tsumufs.fsMountPoint)
-    rc = os.system('%s %s' % (tsumufs.fsUnmountCmd, tsumufs.fsMountPoint))
+    rc = os.system('%s %s' % (cmd, tsumufs.fsMountPoint))
 
     if rc != 0:
       self._debug('Unmount of file system failed.')

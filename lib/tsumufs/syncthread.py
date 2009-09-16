@@ -79,12 +79,12 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       return False
 
     self._debug('fs ping successful.')
-    #self._debug('Checking fs sanity.')
-    #if not tsumufs.fsMount.fsCheckOK():
-      #self._debug('fs sanity check failed.')
-      #return False
 
-    #self._debug('fs sanity check okay.')
+    self._debug('Checking if fs is ready.')
+    if not tsumufs.fsBackend.fsCheckOK():
+      self._debug('fs is already ready.')
+      return True
+
     self._debug('Attempting mount.')
 
     try:
@@ -452,7 +452,6 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         time.sleep(2)
         while (not tsumufs.fsBackend.pingServerOK()
                and not tsumufs.unmounted.isSet()):
-          
           self._debug('sorry, fs unvailable')
           time.sleep(5)
          

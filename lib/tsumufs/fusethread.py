@@ -108,6 +108,9 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         self._debug('***    %s(%d) in %s: %s' % line)
 
       return False
+
+    if tsumufs.fsBackend.fsCheckOK():
+        self._debug(tsumufs.fsType + ' file system is mounted')
     
     self._debug('Initializing trayIcon thread.')
     self._iconThread = None
@@ -231,6 +234,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                     dash_s_do='undef')
 
     # Add in the named options we care about.
+    self.parser.add_option(mountopt='fstype',
+                           dest='fsType',
+                           default="nfs",
+                           help=('Set the type of the undelying filesystem'))
     self.parser.add_option(mountopt='fsbasedir',
                            dest='fsBaseDir',
                            default='/var/lib/tsumufs/fs',
@@ -244,12 +251,12 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                  'source]'))
     self.parser.add_option(mountopt='fsmountcmd',
                            dest='fsMountCmd',
-                           default='/usr/bin/sudo -u root /bin/mount -t nfs4',
+                           default=None,
                            help=('Set the fs mount command '
                                  '[default: %default]'))
     self.parser.add_option(mountopt='fsunmountcmd',
                            dest='fsUnmountCmd',
-                           default='/usr/bin/sudo -u root /bin/umount %s',
+                           default=None,
                            help=('Set the fs unmount command '
                                  '[default: %default]'))
     self.parser.add_option(mountopt='cachebasedir',
@@ -325,31 +332,15 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self.parse(values=tsumufs, errex=1)
 
     # Verify we have a source and destination to mount.
-    if len(self.cmdline[1]) != 3:
+    if len(self.cmdline[1]) != 2:
       sys.stderr.write(('%s: invalid number of arguments provided: '
-                       'expecting source, destination and file system type.\n') %
+                       'expecting source and destination.\n') %
                        tsumufs.progName)
       sys.exit(1)
 
     # Pull out the source and point
     tsumufs.mountSource = self.cmdline[1][0]
     tsumufs.mountPoint  = self.cmdline[1][1]
-    tsumufs.fsType      = self.cmdline[1][2]
-    
-    if tsumufs.fsType == 'nfs':
-      tsumufs.fsMountCmd   = 'sudo /bin/mount -t nfs4'
-      tsumufs.fsBaseDir    = '/var/lib/tsumufs/nfs'
-      tsumufs.fsMountPoint = '/var/tsumufs/nfs'
-
-    elif tsumufs.fsType == 'samba':
-      tsumufs.fsMountCmd   = 'sudo /bin/mount -t cifs -o username=haksan,password=3045wz'
-      tsumufs.fsBaseDir    = '/var/lib/tsumufs/samba'
-      tsumufs.fsMountPoint = '/mnt/samba'
-      
-    elif tsumufs.fsType == 'sshfs':
-      tsumufs.fsMountCmd   = 'sshfs'
-      tsumufs.fsBaseDir    = '/var/lib/tsumufs/sshfs'
-      tsumufs.fsMountPoint = '/mnt/sshfs'
 
     # Make sure the source and point don't contain trailing slashes.
     if tsumufs.mountSource[-1] == '/':
