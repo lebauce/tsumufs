@@ -97,9 +97,6 @@ class FuseFile(tsumufs.Debuggable):
     tsumufs.cacheManager.fakeOpen(path, self._fdFlags, self._fdMode,
                                   self._uid, self._gid)
 
-    if self._fdFlags & os.O_TRUNC:
-      self.ftruncate(0)
-
     # If we were a new file, create a new change in the synclog for the new file
     # entry.
     if self._fdFlags & os.O_CREAT:
@@ -111,6 +108,9 @@ class FuseFile(tsumufs.Debuggable):
       tsumufs.syncLog.addNew('file', filename=self._path)
 
       self._isNewFile = True
+
+    if self._fdFlags & os.O_TRUNC:
+      self.ftruncate(0)
 
     # Rip out any O_TRUNC options after we do the initial open -- O_TRUNC is
     # dangerous to do in this case, because if we get multiple write calls, we
