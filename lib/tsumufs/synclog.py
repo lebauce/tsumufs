@@ -359,6 +359,7 @@ class SyncLog(tsumufs.Debuggable):
 
   @benchmark
   def addChange(self, fname, inum, start, end, data):
+    self._debug('addChange inode %d' % inum)
     try:
       self._lock.acquire()
 
@@ -376,7 +377,10 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.release()
 
   @benchmark
-  def addMetadataChange(self, fname, inum):
+  def addMetadataChange(self, fname, inum, mode=None, uid=None, gid=None, times=None):
+
+    self._debug('addMetaDataChange inode %d' % inum)
+
     '''
     Metadata changes are synced automatically when there is a SyncItem change
     for the file. So all we need to do here is represent the metadata changes
@@ -386,13 +390,16 @@ class SyncLog(tsumufs.Debuggable):
     try:
       self._lock.acquire()
 
-      if not self._inodeChanges.has_key(inum):
+      if self._inodeChanges.has_key(inum):
+        inodechange = self._inodeChanges[inum]
+      else:
         syncitem = tsumufs.SyncItem('change', filename=fname, inum=inum)
         self._syncQueue.append(syncitem)
 
         inodechange = tsumufs.InodeChange()
         self._inodeChanges[inum] = inodechange
 
+      inodechange.addMetaDataChange(mode, uid, gid, times)
     finally:
       self._lock.release()
 

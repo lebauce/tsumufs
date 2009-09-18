@@ -97,6 +97,10 @@ class FuseFile(tsumufs.Debuggable):
     tsumufs.cacheManager.fakeOpen(path, self._fdFlags, self._fdMode,
                                   self._uid, self._gid)
 
+    # Should be done after O_CREAT job ??
+    #if self._fdFlags & os.O_TRUNC:
+    #  self.ftruncate(0)
+
     # If we were a new file, create a new change in the synclog for the new file
     # entry.
     if self._fdFlags & os.O_CREAT:
@@ -109,6 +113,7 @@ class FuseFile(tsumufs.Debuggable):
 
       self._isNewFile = True
 
+    # Is it better here ??
     if self._fdFlags & os.O_TRUNC:
       self.ftruncate(0)
 
@@ -164,9 +169,11 @@ class FuseFile(tsumufs.Debuggable):
     statgoo = tsumufs.cacheManager.statFile(self._path)
     try:
       inode = tsumufs.NameToInodeMap.nameToInode(fspath)
+      self._debug('fusefile:write: inode from tsumufs.NameToInodeMap.nameToInode(fspath)')
     except KeyError, e:
       try:
         inode = statgoo.st_ino
+        self._debug('fusefile:write: inode from tsumufs.cacheManager.statFile(self._path).st_ino')
       except (IOError, OSError), e:
         inode = -1
 

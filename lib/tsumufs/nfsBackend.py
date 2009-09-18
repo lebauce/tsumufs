@@ -50,9 +50,8 @@ class NFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
         kwargs["uid"] = int(os.getenv("PYNFS_UID"))
       if os.getenv("PYNFS_GID"):
         kwargs["gid"] = int(os.getenv("PYNFS_GID"))
-      self._debug('nfs4lib.create_client(' + self.server_ip + ', self.server_port, "tcp", **kwargs)')
       self._ncl = nfs4lib.create_client(self.server_ip, self.server_port, "tcp", **kwargs)
     except socket.error, e:
         return False
     return True
-    #self._ncl.init_connection()
+

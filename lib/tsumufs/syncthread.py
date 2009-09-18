@@ -163,10 +163,10 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     #   5. Otherwise:
     #      4a. Iterate over each change and write it out to fs.
 
-    fusepath   = item.getFilename()
+    fusepath = item.getFilename()
     self._debug('Fuse path is %s' % fusepath)
 
-    fs_stat   = os.lstat(tsumufs.fsPathOf(fusepath))
+    fs_stat = os.lstat(tsumufs.fsPathOf(fusepath))
     cache_stat = os.lstat(tsumufs.cachePathOf(fusepath))
 
     self._debug('Validating data hasn\'t changed on fs.')
@@ -174,7 +174,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       self._debug('File type has completely changed -- conflicted.')
       return True
     elif fs_stat.st_ino != item.getInum():
-      self._debug('Inode number changed -- conflicted.')
+      self._debug('Inode number changed (fs_stat.st_ino == %d, item.getInum() == %d)-- conflicted.' % (fs_stat.st_ino, item.getInum()))
       return True
     else:
       # Iterate over each region, and verify the changes
@@ -221,7 +221,14 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     if (cache_stat.st_size < fs_stat.st_size):
       tsumufs.fsBackend.truncateFile(fusepath, cache_stat.st_size)
 
-    # TODO(writeback): Add in metadata syncing here.
+    # Propogate metadatas
+    modechange, uidchange, gidchange, timeschange = change.getMetaDataChanges()
+    if modechange:
+      os.chmod(tsumufs.fsPathOf(fusepath), modechange)
+    if timeschange:
+      os.utime(tsumufs.fsPathOf(fusepath), timeschange)
+    if uidchange and gidchange:
+      os.chown(tsumufs.fsPathOf(fusepath), uidchange, gidchange)
     return False
 
   def _propogateRename(self, item, change):
@@ -445,6 +452,11 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         self._debug('***    %s(%d) in %s: %s' % line)
 
   def run(self):
+
+    #while True:
+    #  self._debug('Rien !!')
+    #  time.sleep(10)
+    
     try:
       while not tsumufs.unmounted.isSet():
         self._debug('TsumuFS not unmounted yet.')

@@ -190,6 +190,9 @@ class CacheManager(tsumufs.Debuggable):
 
   @benchmark
   def statFile(self, fusepath):
+    
+    self._debug('STAT FILE !!!!!!!')
+
     '''
     Return the stat referenced by fusepath.
 
@@ -218,6 +221,7 @@ class CacheManager(tsumufs.Debuggable):
 
         if 'use-fs' in opcodes:
           result = self._cacheStat(realpath)
+          open("/home/ufo/trace-tsumu", 'a').write('NAME TO INODE: %s , %d\n' % (realpath, result.st_ino)) 
           tsumufs.NameToInodeMap.setNameToInode(realpath, result.st_ino)
           #result.st_blksize = 1024* 32
           return result
@@ -623,6 +627,7 @@ class CacheManager(tsumufs.Debuggable):
 
     self.lockFile(fusepath)
 
+    self._debug("chmod %s %d" % (fusepath, mode))
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
@@ -657,14 +662,50 @@ class CacheManager(tsumufs.Debuggable):
 
     self.lockFile(fusepath)
 
+    self._debug("chown %s %d:%d" % (fusepath, uid, gid))
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
       realpath = self._generatePath(fusepath, opcodes)
 
-      # TODO(permissions): Fix this to use the PermissionsOverlay
+      try:
+        perms = tsumufs.permsOverlay.getPerms(fusepath)
+      except KeyError:
+        statgoo = self.statFile(fusepath)
+        perms = { 'uid': statgoo.st_uid,
+                  'gid': statgoo.st_gid,
+                  'mode': statgoo.st_mode }
 
-      return os.chown(fusepath, uid, gid)
+      # TODO(permissions): Fix this to use the PermissionsOverlay
+      # Fixed ?
+      tsumufs.permsOverlay.setPerms(fusepath, uid, gid, perms.mode)
+
+      self._invalidateStatCache(tsumufs.fsPathOf(fusepath))      
+      #return os.chown(fusepath, uid, gid)
+    finally:
+      self.unlockFile(fusepath)
+
+  @benchmark
+  def utime(self, fusepath, times):
+    '''
+    Change time of a file.
+
+    Returns:
+      None
+
+    Raises:
+      OSError, IOError
+    '''
+
+    self.lockFile(fusepath)
+
+    self._debug("utime %s " % fusepath)
+    try:
+      opcodes = self._genCacheOpcodes(fusepath)
+      self._validateCache(fusepath, opcodes)
+      realpath = self._generatePath(fusepath, opcodes)
+
+      return os.utime(tsumufs.cachePathOf(fusepath), times)
     finally:
       self.unlockFile(fusepath)
 

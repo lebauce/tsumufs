@@ -743,7 +743,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     file_stat = tsumufs.cacheManager.statFile(path)
 
     try:
-      inode = tsumufs.NameToInodeMap.nameToInode(fspath)
+      inode = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path))
     except KeyError, e:
       try:
         inode = file_stat.st_ino
@@ -767,7 +767,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       self._debug('chmod: access granted -- chmoding')
       tsumufs.cacheManager.chmod(path, mode)
       self._debug('chmod: adding metadata change')
-      tsumufs.syncLog.addMetadataChange(path, inode)
+      tsumufs.syncLog.addMetadataChange(path, inode, mode=mode)
 
       return 0
     except OSError, e:
@@ -790,6 +790,14 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     context = self.GetContext()
     file_stat = tsumufs.cacheManager.statFile(path)
 
+    try:
+      inode = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path))
+    except KeyError, e:
+      try:
+        inode = file_stat.st_ino
+      except (IOError, OSError), e:
+        inode = -1
+
     if context['uid'] != 0:
       if newuid != -1:
         raise OSError(errno.EPERM)
@@ -800,7 +808,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       tsumufs.cacheManager.chown(path, newuid, newgid)
-      tsumufs.syncLog.addMetadataChange(path, file_stat.st_ino)
+      tsumufs.syncLog.addMetadataChange(path, inode, uid=newuid, gid=newgid)
 
       return 0
     except OSError, e:
@@ -933,16 +941,31 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       returned.
     '''
 
-    self._debug('opcode: utime | path: %s' % path)
+    self._debug('opcode: utime | path: %s' % (path))
+
+    context = self.GetContext()
+    file_stat = tsumufs.cacheManager.statFile(path)
 
     try:
-      #result = tsumufs.cacheManager.stat(path, True)
-      #tsumufs.cacheManager.utime(path, times)
-      #tsumufs.cacheManager.utime(path, times)
-      
-      inode = tsumufs.cacheManager.statFile(path).st_ino
-      
-      tsumufs.syncLog.addMetadataChange(path, inode )
+      inode = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path))
+      self._debug('UTIME !!! tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path)) : %d' % inode)
+    except KeyError, e:
+      try:
+        inode = file_stat.st_ino
+        self._debug('UTIME !!! file_stat.st_ino : %d' % inode)
+      except (IOError, OSError), e:
+        inode = -1
+        self._debug('UTIME !!! except (IOError, OSError) : %d' % inode)
+
+    self._debug('context: %s' % repr(context))
+    self._debug('file: uid=%d, gid=%d, mode=%o' %
+                (file_stat.st_uid, file_stat.st_gid, file_stat.st_mode))
+
+    try:
+      tsumufs.cacheManager.utime(path, times)
+      self._debug('Adding meta data change to synclog [ %s | %d ]'
+                  % (path, inode))
+      tsumufs.syncLog.addMetadataChange(path, inode, times=times)
 
       return True
     except OSError, e:

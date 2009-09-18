@@ -36,6 +36,10 @@ class InodeChange(tsumufs.Debuggable):
   gid         = None
   symlinkPath = None
 
+  # Bouuuuu a virer c'est juste pour pas me faire chier
+  mode = None
+  times = None
+
   def __repr__(self):
     '''
     Pretty printer method to give a bit more transparency into the
@@ -90,6 +94,16 @@ class InodeChange(tsumufs.Debuggable):
     newlist.append(accumulator)
     self.dataRegions = newlist
 
+  def addMetaDataChange(self, mode, uid, gid, times):
+    '''
+    Method to add a representation of meta changes. 
+    '''
+
+    self.mode = mode
+    self.times = times
+    self.uid = uid
+    self.gid = gid
+
   def getDataChanges(self):
     '''
     Method to return a list of changes made to the data
@@ -97,3 +111,12 @@ class InodeChange(tsumufs.Debuggable):
     '''
 
     return self.dataRegions
+
+  def getMetaDataChanges(self):
+    '''
+    Method to return a list of changes made to the meta datas
+    pointed to by this inode.
+    '''
+
+    return self.mode, self.uid, self.gid, self.times
+
