@@ -126,7 +126,7 @@ class CacheManager(tsumufs.Debuggable):
 
 
     if recache:
-      self._debug('Caching stat.')
+      self._debug('Caching stat. (%s)' % realpath)
 
       # TODO(jtg): detect mount failures here
       stat_result = os.lstat(realpath)
@@ -221,7 +221,6 @@ class CacheManager(tsumufs.Debuggable):
 
         if 'use-fs' in opcodes:
           result = self._cacheStat(realpath)
-          open("/home/ufo/trace-tsumu", 'a').write('NAME TO INODE: %s , %d\n' % (realpath, result.st_ino)) 
           tsumufs.NameToInodeMap.setNameToInode(realpath, result.st_ino)
           #result.st_blksize = 1024* 32
           return result
@@ -703,9 +702,9 @@ class CacheManager(tsumufs.Debuggable):
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
-      realpath = self._generatePath(fusepath, opcodes)
+      cachepath = self._generatePath(fusepath, opcodes)
 
-      return os.utime(tsumufs.cachePathOf(fusepath), times)
+      return os.utime(cachepath, times)
     finally:
       self.unlockFile(fusepath)
 
@@ -1127,11 +1126,13 @@ class CacheManager(tsumufs.Debuggable):
         self._debug('ENOENT on %s' % fusepath)
         raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
       if opcode == 'use-fs':
-        self._debug('Returning fs path for %s' % fusepath)
-        return tsumufs.fsPathOf(fusepath)
+        fspath = tsumufs.fsPathOf(fusepath)
+        self._debug('Returning fs path for %s -> %s' % (fusepath, fspath))
+        return fspath
       if opcode == 'use-cache':
-        self._debug('Returning cache path for %s' % fusepath)
-        return tsumufs.cachePathOf(fusepath)
+        cachepath = tsumufs.cachePathOf(fusepath)
+        self._debug('Returning cache path for %s -> %s' % (fusepath, cachepath))
+        return cachepath
 
   @benchmark
   def _genCacheOpcodes(self, fusepath, for_stat=False):
@@ -1143,7 +1144,7 @@ class CacheManager(tsumufs.Debuggable):
     The string opcodes are as follows:
       enoent         - caller should raise an OSError with ENOENT as the
                        error code.
-      use-fs        - caller should use the fs filename for file
+      use-fs         - caller should use the fs filename for file
                        operations.
       use-cache      - caller should use the cache filename for file
                        operations.

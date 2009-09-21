@@ -42,7 +42,8 @@ class SyncItem(tsumufs.Debuggable):
   _new_fname = None   # string
   _filename  = None   # string
 
-  _inum = None        # inode number
+  _inum   = None      # ? inode number
+  _fsinum = None      # fs inode number
 
   _hargs = None
 
@@ -107,3 +108,6 @@ class SyncItem(tsumufs.Debuggable):
 
   def getInum(self):
     return self._inum
+
+  def getFsInum(self):
+    return self._fsinum

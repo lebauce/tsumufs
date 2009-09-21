@@ -173,8 +173,8 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     if stat.S_IFMT(fs_stat.st_mode) != stat.S_IFMT(cache_stat.st_mode):
       self._debug('File type has completely changed -- conflicted.')
       return True
-    elif fs_stat.st_ino != item.getInum():
-      self._debug('Inode number changed (fs_stat.st_ino == %d, item.getInum() == %d)-- conflicted.' % (fs_stat.st_ino, item.getInum()))
+    elif item.getFsInum() != None and fs_stat.st_ino != item.getFsInum(): 
+      self._debug('Inode number changed.' % (fs_stat.st_ino, item.getInum()))
       return True
     else:
       # Iterate over each region, and verify the changes

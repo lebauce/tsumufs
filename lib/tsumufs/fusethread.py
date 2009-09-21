@@ -767,6 +767,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       self._debug('chmod: access granted -- chmoding')
       tsumufs.cacheManager.chmod(path, mode)
       self._debug('chmod: adding metadata change')
+      # TODO(pouget): improve (fs|cache)inode management!
       tsumufs.syncLog.addMetadataChange(path, inode, mode=mode)
 
       return 0
@@ -808,6 +809,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       tsumufs.cacheManager.chown(path, newuid, newgid)
+      # TODO(pouget): improve (fs|cache)inode management!
       tsumufs.syncLog.addMetadataChange(path, inode, uid=newuid, gid=newgid)
 
       return 0
@@ -965,6 +967,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       tsumufs.cacheManager.utime(path, times)
       self._debug('Adding meta data change to synclog [ %s | %d ]'
                   % (path, inode))
+      # TODO(pouget): improve (fs|cache)inode management!
       tsumufs.syncLog.addMetadataChange(path, inode, times=times)
 
       return True

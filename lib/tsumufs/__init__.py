@@ -48,7 +48,7 @@ from sshfsBackend import *
 from pynfs.nfs4constants import *
 from pynfs.nfs4types import *
 import pynfs.nfs4lib
-#import pynfs
+
 __version__ = (0, 14)
 
 debugMode = True

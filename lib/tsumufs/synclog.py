@@ -326,8 +326,8 @@ class SyncLog(tsumufs.Debuggable):
 
               # Remove any inodeChanges associated with this filename.
               if (change.getInum() != None and
-                  self._inodeChanges.has_key(change.getInum())):
-                del self._inodeChanges[change.getInum()]
+                  self._inodeChanges.has_key(filename)):
+                del self._inodeChanges[filename]
 
           if change.getType() in ('rename'):
             if change.getNewFilename() == filename:
@@ -359,18 +359,19 @@ class SyncLog(tsumufs.Debuggable):
 
   @benchmark
   def addChange(self, fname, inum, start, end, data):
-    self._debug('addChange inode %d' % inum)
+
+    self._debug('addChange path %s' % fname)
     try:
       self._lock.acquire()
 
-      if self._inodeChanges.has_key(inum):
-        inodechange = self._inodeChanges[inum]
+      if self._inodeChanges.has_key(fname):
+        inodechange = self._inodeChanges[fname]
       else:
         syncitem = tsumufs.SyncItem('change', filename=fname, inum=inum)
         self._syncQueue.append(syncitem)
         inodechange = tsumufs.InodeChange()
 
-        self._inodeChanges[inum] = inodechange
+        self._inodeChanges[fname] = inodechange
 
       inodechange.addDataChange(start, end, data)
     finally:
@@ -379,7 +380,7 @@ class SyncLog(tsumufs.Debuggable):
   @benchmark
   def addMetadataChange(self, fname, inum, mode=None, uid=None, gid=None, times=None):
 
-    self._debug('addMetaDataChange inode %d' % inum)
+    self._debug('addMetaDataChange path %s' % fname)
 
     '''
     Metadata changes are synced automatically when there is a SyncItem change
@@ -390,14 +391,14 @@ class SyncLog(tsumufs.Debuggable):
     try:
       self._lock.acquire()
 
-      if self._inodeChanges.has_key(inum):
-        inodechange = self._inodeChanges[inum]
+      if self._inodeChanges.has_key(fname):
+        inodechange = self._inodeChanges[fname]
       else:
         syncitem = tsumufs.SyncItem('change', filename=fname, inum=inum)
         self._syncQueue.append(syncitem)
 
         inodechange = tsumufs.InodeChange()
-        self._inodeChanges[inum] = inodechange
+        self._inodeChanges[fname] = inodechange
 
       inodechange.addMetaDataChange(mode, uid, gid, times)
     finally:
@@ -411,9 +412,9 @@ class SyncLog(tsumufs.Debuggable):
       for change in self._syncQueue:
         if ((change.getFilename() == fusepath) and
             (change.getType() == 'change')):
-          if self._inodeChanges.has_key(change.getInum()):
+          if self._inodeChanges.has_key(fusepath):
             self._debug('Truncating data in %s' % repr(change))
-            inodechange = self._inodeChanges[change.getInum()]
+            inodechange = self._inodeChanges[fusepath]
             inodechange.truncateLength(size)
 
     finally:
@@ -455,9 +456,9 @@ class SyncLog(tsumufs.Debuggable):
 
     # Grab the associated inode changes if there are any.
     if syncitem.getType() == 'change':
-      if self._inodeChanges.has_key(syncitem.getInum()):
-        change = self._inodeChanges[syncitem.getInum()]
-        del self._inodeChanges[syncitem.getInum()]
+      if self._inodeChanges.has_key(syncitem.getFilename()):
+        change = self._inodeChanges[syncitem.getFilename()]
+        del self._inodeChanges[syncitem.getFilename()]
 
     # Ensure the appropriate locks are locked
     if syncitem.getType() in ('new', 'link', 'unlink', 'change'):
