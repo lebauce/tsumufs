@@ -190,9 +190,6 @@ class CacheManager(tsumufs.Debuggable):
 
   @benchmark
   def statFile(self, fusepath):
-    
-    self._debug('STAT FILE !!!!!!!')
-
     '''
     Return the stat referenced by fusepath.
 
@@ -226,7 +223,6 @@ class CacheManager(tsumufs.Debuggable):
           return result
         else:
           # Special case the root of the mount.
-          
           if os.path.abspath(fusepath) == '/':
             return os.lstat(realpath)
 
@@ -1217,7 +1213,7 @@ class CacheManager(tsumufs.Debuggable):
           else:
             if for_stat:
               self._debug('Returning use-fs, as this is for stat.')
-              return ['use-fs']
+              return ['cache-file', 'use-fs']
 
             self._debug(('Cached, should cache, fs avail, fs changed, '
                          'cache clean -- recache, use cache'))
@@ -1242,8 +1238,9 @@ class CacheManager(tsumufs.Debuggable):
 
     try:
       try:
-        cachedstat = self._cachedStats[fusepath]['stat']
-        realstat   = os.lstat(tsumufs.fsPathOf(fusepath))
+        fspath     = tsumufs.fsPathOf(fusepath)
+        cachedstat = self._cachedStats[fspath]['stat']
+        realstat   = os.lstat(fspath)
 
         if ((cachedstat.st_blocks != realstat.st_blocks) or
             (cachedstat.st_mtime != realstat.st_mtime) or
