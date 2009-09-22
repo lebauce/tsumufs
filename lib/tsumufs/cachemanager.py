@@ -1209,7 +1209,7 @@ class CacheManager(tsumufs.Debuggable):
         if self._fsDataChanged(fusepath):
           if tsumufs.syncLog.isFileDirty(fusepath):
             self._debug('Merge conflict detected.')
-            return ['merge-conflict']
+            return ['merge-conflict', 'use-fs']
           else:
             if for_stat:
               self._debug('Returning use-fs, as this is for stat.')
