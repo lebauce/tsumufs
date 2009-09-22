@@ -542,7 +542,7 @@ class CacheManager(tsumufs.Debuggable):
       self.unlockFile(fusepath)
 
   @benchmark
-  def makeSymlink(self, fusepath, target):
+  def makeSymlink(self, target, fusepath):
     '''
     Create a new symlink with the target specified.
 
@@ -576,7 +576,7 @@ class CacheManager(tsumufs.Debuggable):
       self._invalidateStatCache(realpath)
 
       # TODO(permissions): make this use the permissions overlay
-      return os.symlink(realpath, target)
+      return os.symlink(target, realpath)
 
     finally:
       self.unlockFile(fusepath)

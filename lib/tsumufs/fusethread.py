@@ -109,8 +109,18 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
+    self._debug('Loading SyncQueue.')
+    tsumufs.syncLog = tsumufs.SyncLog()
+
+    try:
+      tsumufs.syncLog.loadFromDisk()
+    except EOFError:
+      self._debug('Unable to load synclog. Aborting.')
+
     if tsumufs.fsBackend.fsCheckOK():
-        self._debug(tsumufs.fsType + ' file system is mounted')
+        self._debug(tsumufs.fsType + ' filesystem is mounted')
+    else:
+        self._debug(tsumufs.fsType + " filesystem is not mounted")
     
     self._debug('Initializing trayIcon thread.')
     self._iconThread = None
@@ -651,7 +661,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       context = self.GetContext()
       tsumufs.cacheManager.access(context['uid'], os.path.dirname(dest), os.W_OK | os.X_OK)
 
-      tsumufs.cacheManager.makeSymlink(dest, src)
+      tsumufs.cacheManager.makeSymlink(src, dest)
       tsumufs.syncLog.addNew('symlink', filename=dest)
 
       return True
