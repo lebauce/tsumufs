@@ -89,7 +89,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     # access raw fs with.
     self._debug('Initializing fsMount proxy.')
     try:
-      if tsumufs.fsType == 'nfs':
+      if tsumufs.fsType in ['nfs', 'nfs4']:
           tsumufs.fsBackend = tsumufs.NFSBackend()
       elif tsumufs.fsType == 'samba':
           tsumufs.fsBackend = tsumufs.SAMBABackend()
