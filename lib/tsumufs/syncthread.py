@@ -57,14 +57,6 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     # output to the syslog rather than to /dev/null.
     sys.excepthook = tsumufs.syslogExceptHook
 
-    self._debug('Loading SyncQueue.')
-    tsumufs.syncLog = tsumufs.SyncLog()
-
-    try:
-      tsumufs.syncLog.loadFromDisk()
-    except EOFError:
-      self._debug('Unable to load synclog. Aborting.')
-
     self._debug('Setting up thread state.')
     threading.Thread.__init__(self, name='SyncThread')
 
@@ -466,7 +458,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
                and not tsumufs.unmounted.isSet()):
           self._debug('sorry, fs unvailable')
           time.sleep(5)
-         
+
         while (tsumufs.fsBackend.pingServerOK()
                and not os.path.ismount(tsumufs.fsMountPoint)
                and not tsumufs.unmounted.isSet()):
@@ -529,7 +521,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       self._debug('Unmounting fs.')
 
       try:
-        #No need to umount fsMountPath in my application  
+        #No need to umount fsMountPath in my application
         #tsumufs.fsMount.unmount()
         pass
       except:

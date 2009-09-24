@@ -260,8 +260,8 @@ class SyncLog(tsumufs.Debuggable):
 
       params['file_type'] = type_
       syncitem = tsumufs.SyncItem('new', **params)
+      self._appendToSyncQueue(syncitem)
 
-      self._syncQueue.append(syncitem)
     finally:
       self._lock.release()
 
@@ -283,7 +283,8 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.acquire()
 
       syncitem = tsumufs.SyncItem('link', inum=inum, filename=filename)
-      self._syncQueue.append(syncitem)
+      self._appendToSyncQueue(syncitem)
+
     finally:
       self._lock.release()
 
@@ -322,7 +323,7 @@ class SyncLog(tsumufs.Debuggable):
           if change.getType() in ('new', 'change', 'link'):
             if change.getFilename() == filename:
               # Remove the change
-              del self._syncQueue[index]
+              self._removeFromSyncQueue(change)
 
               # Remove any inodeChanges associated with this filename.
               if (change.getInum() != None and
@@ -352,7 +353,7 @@ class SyncLog(tsumufs.Debuggable):
       # it wasn't a file that was created on the cache by the user.
       if not is_new_file:
         syncitem = tsumufs.SyncItem('unlink', file_type=type_, filename=filename)
-        self._syncQueue.append(syncitem)
+        self._appendToSyncQueue(syncitem)
 
     finally:
       self._lock.release()
@@ -368,9 +369,9 @@ class SyncLog(tsumufs.Debuggable):
         inodechange = self._inodeChanges[fname]
       else:
         syncitem = tsumufs.SyncItem('change', filename=fname, inum=inum)
-        self._syncQueue.append(syncitem)
-        inodechange = tsumufs.InodeChange()
+        self._appendToSyncQueue(syncitem)
 
+        inodechange = tsumufs.InodeChange()
         self._inodeChanges[fname] = inodechange
 
       inodechange.addDataChange(start, end, data)
@@ -395,7 +396,7 @@ class SyncLog(tsumufs.Debuggable):
         inodechange = self._inodeChanges[fname]
       else:
         syncitem = tsumufs.SyncItem('change', filename=fname, inum=inum)
-        self._syncQueue.append(syncitem)
+        self._appendToSyncQueue(syncitem)
 
         inodechange = tsumufs.InodeChange()
         self._inodeChanges[fname] = inodechange
@@ -435,7 +436,7 @@ class SyncLog(tsumufs.Debuggable):
       else:
         syncitem = tsumufs.SyncItem('rename', inum=inum,
                                     old_fname=old, new_fname=new)
-        self._syncQueue.append(syncitem)
+        self._appendToSyncQueue(syncitem)
 
     finally:
       self._lock.release()
@@ -490,10 +491,24 @@ class SyncLog(tsumufs.Debuggable):
 
       # Remove the item from the worklog.
       if remove_item:
-        self._syncQueue.remove(syncitem)
+        self._removeFromSyncQueue(syncitem)
 
     finally:
       self._lock.release()
+
+  def _appendToSyncQueue(self, syncitem):
+    self._syncQueue.append(syncitem)
+    tsumufs.notifier.notify('synchitem', 
+                            {'action' : 'append',
+                             'file'   : syncitem.getFilename(),
+                             'type'   : syncitem.getType()})
+
+  def _removeFromSyncQueue(self, syncitem):
+    self._syncQueue.remove(syncitem)
+    tsumufs.notifier.notify('synchitem',
+                            {'action' : 'remove',
+                             'file'   : syncitem.getFilename(), 
+                             'type'   : syncitem.getType()})
 
 # hash of inode changes:
 #   { <inode number>: { data: ( { data: "...",

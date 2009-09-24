@@ -203,6 +203,7 @@ class CacheManager(tsumufs.Debuggable):
       OSError if there was a problemg getting the stat.
     '''
     self.lockFile(fusepath)
+
     try:
       opcodes = self._genCacheOpcodes(fusepath, for_stat=True)
       self._debug(' Opcodes are: %s' % str(opcodes))

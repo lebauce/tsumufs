@@ -25,8 +25,6 @@ import statvfs
 import time
 import threading
 import traceback
-import gettext
-gettext.install('TsumuFS', 'locale', unicode=1) 
 
 import fuse
 from fuse import Fuse
@@ -85,6 +83,31 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
+    self._debug('Loading SyncQueue.')
+    tsumufs.syncLog = tsumufs.SyncLog()
+
+    try:
+      tsumufs.syncLog.loadFromDisk()
+    except EOFError:
+      self._debug('Unable to load synclog. Aborting.')
+
+    self._debug('Initializing notification object.')
+
+    try:
+      tsumufs.notifier = tsumufs.notification.Notification()
+    except:
+      exc_info = sys.exc_info()
+
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
+      return False
+
     # Setup the fsMount object for both sync and mount threads to
     # access raw fs with.
     self._debug('Initializing fsMount proxy.')
@@ -109,36 +132,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
-    self._debug('Loading SyncQueue.')
-    tsumufs.syncLog = tsumufs.SyncLog()
-
-    try:
-      tsumufs.syncLog.loadFromDisk()
-    except EOFError:
-      self._debug('Unable to load synclog. Aborting.')
-
     if tsumufs.fsBackend.fsCheckOK():
-        self._debug(tsumufs.fsType + ' filesystem is mounted')
-    else:
-        self._debug(tsumufs.fsType + " filesystem is not mounted")
-    
-    self._debug('Initializing trayIcon thread.')
-    self._iconThread = None
-    try:
-      import trayicon
-      self._iconThread = trayicon.TrayIconThread()
-    except:
-      exc_info = sys.exc_info()
-    
-      self._debug('*** Unhandled exception occurred')
-      self._debug('***     Type: %s' % str(exc_info[0]))
-      self._debug('***    Value: %s' % str(exc_info[1]))
-      self._debug('*** Traceback:')
-
-      for line in traceback.extract_tb(exc_info[2]):
-        self._debug('***    %s(%d) in %s: %s' % line)
-
-      return False
+        self._debug(tsumufs.fsType + ' file system is mounted')
 
     # Initialize our threads
     self._debug('Initializing sync thread.')
@@ -159,13 +154,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       return False
 
     # Start the threads
-
-    if self._iconThread:
-        self._debug('Starting Icon thread.')
-        self._iconThread.start()
-
     self._debug('Starting sync thread.')
     self._syncThread.start()
+
+    # A virer !!
+    tsumufs.unmounted.clear()
 
     self._debug('fsinit complete.')
 

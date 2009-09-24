@@ -38,6 +38,7 @@ from mutablestat import *
 from filepermission import *
 from permissionsoverlay import *
 from extendedattributes import *
+from notification import *
 from metrics import *
 
 from fsBackend import *
@@ -83,14 +84,28 @@ permsPath = None
 
 fsBackend = None
 
-icon = None
-socketDir = '/var/run/tsumufs'
+notifier = None
 
-unmounted       = threading.Event()
-fsAvailable     = threading.Event()
+class EventNotifier(threading._Event):
+
+  def __init__(self, noticationtype):
+    threading._Event.__init__(self)
+    self.type = noticationtype
+    # notifier.notify(self.type, False)
+
+  def clear(self):
+    threading._Event.clear(self)
+    notifier.notify(self.type, False)
+    
+  def set(self):
+    threading._Event.set(self)
+    notifier.notify(self.type, True)
+
+unmounted       = EventNotifier("unmounted")
+fsAvailable     = EventNotifier("connection")
 forceDisconnect = threading.Event()
 syncPause       = threading.Event()
-syncWork        = threading.Event()
+syncWork        = EventNotifier("synchronisation")
 
 defaultCacheMode = 0600         # readable only by the user
 

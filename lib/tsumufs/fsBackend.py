@@ -134,7 +134,7 @@ class FSBackend(object):
           self._debug('Triggering a disconnect.')
 
           tsumufs.fsAvailable.clear()
-          tsumufs.fsAvailable.notifyAll()
+          # tsumufs.fsAvailable.notifyAll()
           raise tsumufs.FSBackendError()
         else:
           raise
@@ -182,7 +182,7 @@ class FSBackend(object):
           self._debug('Triggering a disconnect.')
 
           tsumufs.fsAvailable.clear()
-          tsumufs.fsAvailable.notifyAll() # TODO: AttributeError
+          # tsumufs.fsAvailable.notifyAll() # TODO: AttributeError
 
           raise tsumufs.FSBackendError()
         else:
@@ -213,7 +213,7 @@ class FSBackend(object):
           self._debug('Triggering a disconnect.')
 
           tsumufs.fsAvailable.clear()
-          tsumufs.fsAvailable.notifyAll()
+          # tsumufs.fsAvailable.notifyAll()
 
           raise tsumufs.FSBackendError()
         else:
