@@ -34,7 +34,7 @@ class SAMBABackendError(Exception):
 class SAMBABackend(tsumufs.Debuggable, tsumufs.FSBackend):
 
   def __init__(self):
-    pass
+    tsumufs.FSBackend.__init__(self)
 
   def pingServerOK(self):
     '''

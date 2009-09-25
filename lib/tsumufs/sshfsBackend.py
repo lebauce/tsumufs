@@ -37,7 +37,7 @@ class SSHFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
   def __init__(self):
     self.server_ip = tsumufs.mountSource.slit(":")[0]
     self.server_port = 22
-    pass
+    tsumufs.FSBackend.__init__(self)
 
   def pingServerOK(self):
     '''

@@ -132,9 +132,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
-    if tsumufs.fsBackend.fsCheckOK():
-        self._debug(tsumufs.fsType + ' file system is mounted')
-
     # Initialize our threads
     self._debug('Initializing sync thread.')
     try:
@@ -262,6 +259,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            default=None,
                            help=('Set the fs unmount command '
                                  '[default: %default]'))
+    self.parser.add_option(mountopt='fsmountmethod',
+                           dest='fsMountMethod',
+                           default="normal",
+                           help=('Set the fs mount method '
+                                 '[default: %default]'))
     self.parser.add_option(mountopt='cachebasedir',
                            dest='cacheBaseDir',
                            default='/var/cache/tsumufs',
@@ -361,7 +363,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     # Finally, calculate the runtime paths if they weren't specified already.
     if tsumufs.fsMountPoint == None:
       tsumufs.fsMountPoint = os.path.join(tsumufs.fsBaseDir,
-                                           tsumufs.mountPoint.replace('/', '-'))
+                                          tsumufs.mountPoint.replace('/', '-'))
 
     if tsumufs.cachePoint == None:
       tsumufs.cachePoint = os.path.join(tsumufs.cacheBaseDir,

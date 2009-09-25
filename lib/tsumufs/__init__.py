@@ -60,12 +60,12 @@ syslogOpen = False
 
 mountSource  = None
 mountPoint   = None
-mountOptions = 'sec=krb5p,rw,proto=tcp,resvport'
+mountOptions = None
 
 fsBaseDir    = None
 fsMountPoint = None
 fsMountCmd   = None
-fsUnmountCmd = '/bin/umount'
+fsUnmountCmd = None
 fsMount      = None
 fsType       = None
 

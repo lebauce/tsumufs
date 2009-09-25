@@ -73,7 +73,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     self._debug('fs ping successful.')
 
     self._debug('Checking if fs is ready.')
-    if not tsumufs.fsBackend.fsCheckOK():
+    if tsumufs.fsBackend.fsMountCheckOK():
       self._debug('fs is already ready.')
       return True
 
@@ -108,8 +108,12 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         return True
 
     if item.getFileType() != 'dir':
-      shutil.copy(tsumufs.cachePathOf(fusepath),
-                  tsumufs.fsPathOf(fusepath))
+      if item.getFileType() == 'symlink':
+        os.symlink(os.readlink(tsumufs.cachePathOf(fusepath)),
+                   tsumufs.fsPathOf(fusepath))
+      else:
+        shutil.copy(tsumufs.cachePathOf(fusepath),
+                    tsumufs.fsPathOf(fusepath))
     else:
       perms = tsumufs.permsOverlay.getPerms(fusepath)
       os.mkdir(tsumufs.fsPathOf(fusepath), perms.mode)
@@ -469,7 +473,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
           self._debug('User requested sync pause. Sleeping.')
           time.sleep(5)
 
-        while (tsumufs.fsBackend.fsCheckOK()
+        while (tsumufs.fsBackend.fsMountCheckOK()
                and not tsumufs.unmounted.isSet()
                and not tsumufs.syncPause.isSet()):
           try:
@@ -521,9 +525,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       self._debug('Unmounting fs.')
 
       try:
-        #No need to umount fsMountPath in my application
-        #tsumufs.fsMount.unmount()
-        pass
+        tsumufs.fsBackend.unmount()
       except:
         self._debug('Unable to unmount fs -- caught an exception.')
         tsumufs.syslogCurrentException()

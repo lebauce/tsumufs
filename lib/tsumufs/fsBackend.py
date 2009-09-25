@@ -83,7 +83,7 @@ class FSBackend(object):
   def pingServerOK(self):
     return "not yet implemented"
 
-  def fsCheckOK(self):
+  def fsMountCheckOK(self):
     '''
     Method to verify that the File System server is available and mounted
     '''
@@ -255,7 +255,14 @@ class FSBackend(object):
     try:
       if tsumufs.mountOptions != None:
         cmd += ' -o ' + tsumufs.mountOptions
-      cmd += ' ' + tsumufs.mountSource + ' ' + tsumufs.fsMountPoint
+
+      self._debug('Mount method: %s.' % tsumufs.fsMountMethod)
+      if tsumufs.fsMountMethod == "normal":
+        cmd += ' ' + tsumufs.mountSource + ' ' + tsumufs.fsMountPoint
+      elif tsumufs.fsMountMethod == "fstab":
+        cmd += ' ' + tsumufs.fsMountPoint
+      elif tsumufs.fsMountMethod == "sudo":
+        cmd = '/usr/bin/sudo -u root ' + cmd + ' ' + tsumufs.mountSource + ' ' + tsumufs.fsMountPoint
 
       self._debug(cmd)
       rc = os.system(cmd) >> 8

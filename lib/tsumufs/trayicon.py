@@ -66,18 +66,20 @@ class TrayIconThread():
   _mountPointPath = '.'
 
   _isUnmounted    = True
-  _isConnected    = False
+  _isConnected    = True
   _isConflicted   = False
-  _isSynchronized = False
+  _isSynchronized = True
 
-  _iconPathPrefix ="/usr/share/tsumufs/icons" 
+  _iconPathPrefix ="/usr/share/tsumufs/icons"
   
   _syncQueue = []
   
 
   def __init__(self):
 
-    # TODO: ping tsumufs and retreive default infos
+    # TODO: ping tsumufs and retreive default infos via dbus
+    if os.system("/bin/touch " + os.path.join(os.path.expanduser("~"), ".tsumufs", ".overlay/")):
+      self._isUnmounted = False
 
     # Initializing TrayIcon object.
     pynotify.init('TsumuFS')
@@ -102,14 +104,14 @@ class TrayIconThread():
     SyncWork is set during propogate changes
     """
     
-    if self._isSynchronized:
-        path = os.path.join(self._iconPathPrefix, 'synchronized.png')
-    elif self._isConnected:
-        path = os.path.join(self._iconPathPrefix, 'connected.png')
-    elif self._isUnmounted:
-        path = os.path.join(self._iconPathPrefix, 'unmounted.png')
+    if self._isUnmounted:
+      path = os.path.join(self._iconPathPrefix, 'unmounted.png')
+    elif not self._isConnected:
+      path = os.path.join(self._iconPathPrefix, 'disconnected.png')
+    elif self._isSynchronized:
+      path = os.path.join(self._iconPathPrefix, 'connected.png')
     else:
-        path = os.path.join(self._iconPathPrefix, 'disconnected.png')
+      path = os.path.join(self._iconPathPrefix, 'syncro_file.png')
 
     pixbuf = gtk.gdk.pixbuf_new_from_file(path)
 
@@ -140,7 +142,7 @@ class TrayIconThread():
         
     path = os.path.join(self._iconPathPrefix, 'ufo_icon.png')
     pImage = gtk.image_new_from_file(path)
-    item1.set_image(pImage)    
+    item1.set_image(pImage)
     menu.append(item1)
     
     bar = gtk.SeparatorMenuItem()
@@ -150,17 +152,14 @@ class TrayIconThread():
     We're looking for if an item is sending to distant file system server
     In that case, we display its name
     """
-    if self._isSynchronized:
-      try:
-        syncitem = self._syncQueue[0]
-        name = syncitem['file']
-        item3 = gtk.ImageMenuItem(str(name))
-        path = os.path.join(self._iconPathPrefix, 'syncro_file.png')
-        pImage = gtk.image_new_from_file(path)
-        item3.set_image(pImage)   
-        menu.append(item3) 
-      except IndexError, KeyError:
-        pass
+    if len(self._syncQueue) > 0:
+      syncitem = self._syncQueue[0]
+      name = syncitem['file']
+      item3 = gtk.ImageMenuItem(str(name))
+      path = os.path.join(self._iconPathPrefix, 'syncro_file.png')
+      pImage = gtk.image_new_from_file(path)
+      item3.set_image(pImage)   
+      menu.append(item3) 
         
     # Edit a submenu to show all items which are in the syncQueue
     item2 = gtk.ImageMenuItem(_("Files not synchronized"))
@@ -203,8 +202,8 @@ class TrayIconThread():
     item2.set_submenu(submenu)
     item1.show()
     bar.show()
-    if self._isSynchronized:
-        item3.show()
+    if len(self._syncQueue) > 0:
+      item3.show()
     item2.show()
     menu.popup(None, None, None, event.button, event.time)
     menu.attach_to_widget(self._trayIcon, None)
@@ -223,9 +222,19 @@ class TrayIconThread():
     if item['action'] == 'append':
       self._syncQueue.append({'file' : item['file'], 
                               'type' : item['type']})
+      if len(self._syncQueue) == 1:
+        self._isSynchronized = False
+        self._updateIcon()
     else:
-      self._syncQueue.remove({'file' : item['file'], 
-                              'type' : item['type']})
+      try:
+        self._syncQueue.remove({'file' : item['file'], 
+                                'type' : item['type']})
+      except:
+        print str(item) + " not found in sync queue"
+
+      if len(self._syncQueue) == 0:
+        self._isSynchronized = True
+        self._updateIcon()
 
   def _handleConnectionStatusSignal(self, status):
     print "_handleConnectionStatusSignal " + str(status)
@@ -239,7 +248,6 @@ class TrayIconThread():
 
   def _handleSynchronisationStatusSignal(self, status):
     print "_handleSynchronisationStatusSignal " + str(status)
-    self._isSynchronized = status
     self._updateIcon()
 
   def _handleUnmountedStatusSignal(self, status):
@@ -254,26 +262,19 @@ class DbusMainLoopThread(threading.Thread):
     threading.Thread.__init__(self, name='DbusMainLoopThread')
 
   def run(self):
-    bus = dbus.SessionBus()
+    bus = dbus.SystemBus()
     bus.add_signal_receiver(icon._handleConnectionStatusSignal, 
                             dbus_interface = "org.tsumufs.NotificationService", 
                             signal_name = "_notifyConnectionStatus")
-    bus.add_signal_receiver(icon._handleSynchronisationStatusSignal, 
-                            dbus_interface = "org.tsumufs.NotificationService", 
-                            signal_name = "_notifySynchronisationStatus")
+    # bus.add_signal_receiver(icon._handleSynchronisationStatusSignal, 
+    #                        dbus_interface = "org.tsumufs.NotificationService", 
+    #                        signal_name = "_notifySynchronisationStatus")
     bus.add_signal_receiver(icon._handleUnmountedStatusSignal, 
                             dbus_interface = "org.tsumufs.NotificationService", 
                             signal_name = "_notifyUnmountedStatus")
     bus.add_signal_receiver(icon._handleSynchronisationItemSignal, 
                             dbus_interface = "org.tsumufs.NotificationService", 
                             signal_name = "_notifySynchronisationItem")
-
-    remote_object = bus.get_object("org.tsumufs.NotificationService","/org/tsumufs/NotificationService/notifier")
-    iface = dbus.Interface(remote_object, "org.tsumufs.NotificationService")
-
-    res = iface.appelDistant()
-
-    print "res = " + res
 
     loop = gobject.MainLoop()
     loop.run()
