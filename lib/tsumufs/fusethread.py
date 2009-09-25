@@ -955,14 +955,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       inode = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path))
-      self._debug('UTIME !!! tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path)) : %d' % inode)
     except KeyError, e:
       try:
         inode = file_stat.st_ino
-        self._debug('UTIME !!! file_stat.st_ino : %d' % inode)
       except (IOError, OSError), e:
         inode = -1
-        self._debug('UTIME !!! except (IOError, OSError) : %d' % inode)
 
     self._debug('context: %s' % repr(context))
     self._debug('file: uid=%d, gid=%d, mode=%o' %

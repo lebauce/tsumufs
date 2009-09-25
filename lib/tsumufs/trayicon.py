@@ -289,7 +289,7 @@ def daemonize():
 
 if __name__ == '__main__':
 
-  # daemonize()
+  daemonize()
 
   icon = TrayIconThread()
 

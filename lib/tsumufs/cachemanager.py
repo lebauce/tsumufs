@@ -572,8 +572,10 @@ class CacheManager(tsumufs.Debuggable):
 
       self._invalidateStatCache(realpath)
 
-      # TODO(permissions): make this use the permissions overlay
-      return os.symlink(target, realpath)
+      res = os.symlink(target, realpath)
+      tsumufs.permsOverlay.setPerms(fusepath, os.getuid(), os.getgid(), os.R_OK | os.W_OK | os.X_OK)
+
+      return res
 
     finally:
       self.unlockFile(fusepath)
@@ -672,12 +674,9 @@ class CacheManager(tsumufs.Debuggable):
                   'gid': statgoo.st_gid,
                   'mode': statgoo.st_mode }
 
-      # TODO(permissions): Fix this to use the PermissionsOverlay
-      # Fixed ?
       tsumufs.permsOverlay.setPerms(fusepath, uid, gid, perms.mode)
 
       self._invalidateStatCache(tsumufs.fsPathOf(fusepath))      
-      #return os.chown(fusepath, uid, gid)
     finally:
       self.unlockFile(fusepath)
 

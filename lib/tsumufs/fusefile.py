@@ -169,11 +169,9 @@ class FuseFile(tsumufs.Debuggable):
     statgoo = tsumufs.cacheManager.statFile(self._path)
     try:
       inode = tsumufs.NameToInodeMap.nameToInode(fspath)
-      self._debug('fusefile:write: inode from tsumufs.NameToInodeMap.nameToInode(fspath)')
     except KeyError, e:
       try:
         inode = statgoo.st_ino
-        self._debug('fusefile:write: inode from tsumufs.cacheManager.statFile(self._path).st_ino')
       except (IOError, OSError), e:
         inode = -1
 
