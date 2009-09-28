@@ -28,6 +28,7 @@ import traceback
 import shutil
 import time
 import threading
+from threading import *
 
 import pygtk
 pygtk.require('2.0')
@@ -78,7 +79,7 @@ class TrayIconThread():
   def __init__(self):
 
     # TODO: ping tsumufs and retreive default infos via dbus
-    if os.system("/bin/touch " + os.path.join(os.path.expanduser("~"), ".tsumufs", ".overlay/")):
+    if os.system("/bin/touch " + os.path.join("/var/tsumufs/overlay/")):
       self._isUnmounted = False
 
     # Initializing TrayIcon object.
@@ -221,10 +222,8 @@ class TrayIconThread():
     print "_handleSynchronisationItemSignal " + str(item)
     if item['action'] == 'append':
       if len(self._syncQueue) == 0:
-        self.syncTimer.cancel()
         self._isSynchronized = False
-        self.syncTimer = Timer(2.0, self._updateIcon)
-        self.syncTimer.start()
+        self._updateIcon()
 
       self._syncQueue.append({'file' : item['file'], 
                               'type' : item['type']})
@@ -236,10 +235,11 @@ class TrayIconThread():
         print str(item) + " not found in sync queue"
 
       if len(self._syncQueue) == 0:
-        self.syncTimer.cancel()
+        if self._syncTimer:
+          self._syncTimer.cancel()
         self._isSynchronized = True
-        self.syncTimer = Timer(2.0, self._updateIcon)
-        self.syncTimer.start()
+        self._syncTimer = Timer(2.0, self._updateIcon)
+        self._syncTimer.start()
 
   def _handleConnectionStatusSignal(self, status):
     print "_handleConnectionStatusSignal " + str(status)
