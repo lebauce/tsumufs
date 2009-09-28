@@ -43,7 +43,7 @@ class NFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
     self.server_port = 2049
     for mountOpt in tsumufs.mountOptions.split(','):
       if mountOpt[0:5] == "port=":
-         self.server_port = mountOpt[5:]
+         self.server_port = int(mountOpt[5:])
          break
 
     tsumufs.FSBackend.__init__(self)
