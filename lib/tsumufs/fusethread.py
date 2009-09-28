@@ -300,23 +300,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                  'Only useful if you also specify '
                                  '-f. Typically only useful to '
                                  'developers.'))
-
-    self.parser.add_option('-b',
-                           action='callback',
-                           callback=lambda *args: self.fuse_args.add('blkdev'),
-                           help=('Fuse will work on bigger regions than 4Kbytes'))    
-    
-
-    self.parser.add_option('-e',
-                           action='callback',
-                           callback=lambda *args: self.fuse_args.add('loop'),
-                           help=('Fuse will work on bigger regions than 4Kbytes'))
-    
-    self.parser.add_option('-c',
-                           action='callback',
-                           callback=lambda *args: self.fuse_args.add('max_write=32768'),
-                           help=('Fuse will work on bigger regions than 4Kbytes')) 
-    
     self.parser.add_option('-a',
                            action='callback',
                            callback=lambda *args: self.fuse_args.add('fsname=/tmp/tsumufs-test-nfs-dir'),

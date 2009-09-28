@@ -260,7 +260,7 @@ class FSBackend(object):
       if tsumufs.fsMountMethod == "normal":
         cmd += ' ' + tsumufs.mountSource + ' ' + tsumufs.fsMountPoint
       elif tsumufs.fsMountMethod == "fstab":
-        cmd += ' ' + tsumufs.fsMountPoint
+        cmd = tsumufs.fsMountCmd + ' ' + tsumufs.fsMountPoint
       elif tsumufs.fsMountMethod == "sudo":
         cmd = '/usr/bin/sudo -u root ' + cmd + ' ' + tsumufs.mountSource + ' ' + tsumufs.fsMountPoint
 

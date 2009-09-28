@@ -41,6 +41,11 @@ class NFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
   def __init__(self):
     self.server_ip = tsumufs.mountSource.split(":")[0]
     self.server_port = 2049
+    for mountOpt in tsumufs.mountOptions.split(','):
+      if mountOpt[0:5] == "port=":
+         self.server_port = mountOpt[5:]
+         break
+
     tsumufs.FSBackend.__init__(self)
 
   def pingServerOK(self):

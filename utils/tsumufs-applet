@@ -73,7 +73,7 @@ class TrayIconThread():
   _iconPathPrefix ="/usr/share/tsumufs/icons"
   
   _syncQueue = []
-  
+  _syncTimer = None
 
   def __init__(self):
 
@@ -220,11 +220,14 @@ class TrayIconThread():
   def _handleSynchronisationItemSignal(self, item):
     print "_handleSynchronisationItemSignal " + str(item)
     if item['action'] == 'append':
+      if len(self._syncQueue) == 0:
+        self.syncTimer.cancel()
+        self._isSynchronized = False
+        self.syncTimer = Timer(2.0, self._updateIcon)
+        self.syncTimer.start()
+
       self._syncQueue.append({'file' : item['file'], 
                               'type' : item['type']})
-      if len(self._syncQueue) == 1:
-        self._isSynchronized = False
-        self._updateIcon()
     else:
       try:
         self._syncQueue.remove({'file' : item['file'], 
@@ -233,8 +236,10 @@ class TrayIconThread():
         print str(item) + " not found in sync queue"
 
       if len(self._syncQueue) == 0:
+        self.syncTimer.cancel()
         self._isSynchronized = True
-        self._updateIcon()
+        self.syncTimer = Timer(2.0, self._updateIcon)
+        self.syncTimer.start()
 
   def _handleConnectionStatusSignal(self, status):
     print "_handleConnectionStatusSignal " + str(status)
