@@ -955,7 +955,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       # TODO(pouget): improve (fs|cache)inode management!
       tsumufs.syncLog.addMetadataChange(path, inode, times=times)
 
-      return True
+      return 0
     except OSError, e:
       self._debug('utime: Caught OSError: errno %d: %s'
                   % (e.errno, e.strerror))
