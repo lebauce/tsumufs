@@ -67,7 +67,7 @@ class TrayIconThread():
   _mountPointPath = '.'
 
   _isUnmounted    = True
-  _isConnected    = True
+  _isConnected    = False
   _isConflicted   = False
   _isSynchronized = True
 
@@ -79,7 +79,7 @@ class TrayIconThread():
   def __init__(self):
 
     # TODO: ping tsumufs and retreive default infos via dbus
-    if os.system("/bin/touch " + os.path.join("/var/tsumufs/overlay/")):
+    if os.path.ismount("/var/tsumufs/overlay"):
       self._isUnmounted = False
 
     # Initializing TrayIcon object.
