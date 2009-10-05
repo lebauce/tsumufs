@@ -498,16 +498,28 @@ class SyncLog(tsumufs.Debuggable):
 
   def _appendToSyncQueue(self, syncitem):
     self._syncQueue.append(syncitem)
+
+    if syncitem.getType() != 'rename':
+        displayedName = syncitem.getFilename()
+    else:
+        displayedName = syncitem.getNewFilename()
+
     tsumufs.notifier.notify('synchitem', 
                             {'action' : 'append',
-                             'file'   : syncitem.getFilename(),
+                             'file'   : displayedName,
                              'type'   : syncitem.getType()})
 
   def _removeFromSyncQueue(self, syncitem):
     self._syncQueue.remove(syncitem)
+
+    if syncitem.getType() != 'rename':
+        displayedName = syncitem.getFilename()
+    else:
+        displayedName = syncitem.getNewFilename()
+
     tsumufs.notifier.notify('synchitem',
                             {'action' : 'remove',
-                             'file'   : syncitem.getFilename(), 
+                             'file'   : displayedName, 
                              'type'   : syncitem.getType()})
 
 # hash of inode changes:
