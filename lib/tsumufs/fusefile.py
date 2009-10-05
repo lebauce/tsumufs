@@ -319,6 +319,7 @@ class FuseFile(tsumufs.Debuggable):
 
     return 0
 
+  """
   @benchmark
   def lock(self, cmd, owner, **kw):
     self._debug('opcode: lock | cmd: %o | owner: %d | kw: %s'
@@ -327,3 +328,4 @@ class FuseFile(tsumufs.Debuggable):
     # TODO(jtg): Implement this.
     self._debug('Returning -ENOSYS')
     return -errno.ENOSYS
+  """
