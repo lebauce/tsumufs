@@ -573,8 +573,12 @@ class CacheManager(tsumufs.Debuggable):
       self._invalidateStatCache(realpath)
 
       res = os.symlink(target, realpath)
-      tsumufs.permsOverlay.setPerms(fusepath, os.getuid(), os.getgid(), os.R_OK | os.W_OK | os.X_OK)
 
+      lstat = os.lstat(realpath)
+      tsumufs.permsOverlay.setPerms(fusepath, 
+                                    lstat.st_uid,
+                                    lstat.st_gid,
+                                    lstat.st_mode)
       return res
 
     finally:
@@ -1286,8 +1290,17 @@ class CacheManager(tsumufs.Debuggable):
       try:
         statgoo = os.lstat(tsumufs.cachePathOf(fusepath))
 
-        if stat.S_ISDIR(statgoo.st_mode) and tsumufs.fsAvailable.isSet():
-          return self._cachedDirents.has_key(fusepath)
+        # Why we use specific behavior for folders when connected ?
+        # This raise an error as this method return False after a 'rename',
+        # whereas new dir is cached.
+        #
+        #if stat.S_ISDIR(statgoo.st_mode) and tsumufs.fsAvailable.isSet():
+        #  return self._cachedDirents.has_key(fusepath)
+
+        # if / never stated yet, put it in _cachedDirents list
+        if fusepath == '/':
+           return self._cachedDirents.has_key(fusepath)
+
       except OSError, e:
         if e.errno == errno.ENOENT:
           return False
