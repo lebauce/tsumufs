@@ -749,6 +749,11 @@ class CacheManager(tsumufs.Debuggable):
       
       result = os.rename(srcpath, destpath)
 
+      # If path is a folder, add a cachedDirents with old path 
+      # cachedDirents contents.
+      if self._cachedDirents.has_key(fusepath):
+        self._cachedDirents[newpath] = self._cachedDirents[fusepath]
+
       # Invalidate the dirent cache for the old pathname
       self._invalidateDirentCache(os.path.dirname(fusepath),
                                   os.path.basename(fusepath))
