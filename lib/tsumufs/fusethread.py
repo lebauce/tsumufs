@@ -642,7 +642,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       tsumufs.cacheManager.makeSymlink(src, dest)
       tsumufs.syncLog.addNew('symlink', filename=dest)
 
-      return True
+      return 0
     except OSError, e:
       self._debug('symlink: Caught OSError: errno %d: %s'
                   % (e.errno, e.strerror))
