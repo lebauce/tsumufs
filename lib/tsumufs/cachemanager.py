@@ -1295,17 +1295,8 @@ class CacheManager(tsumufs.Debuggable):
       try:
         statgoo = os.lstat(tsumufs.cachePathOf(fusepath))
 
-        # Why we use specific behavior for folders when connected ?
-        # This raise an error as this method return False after a 'rename',
-        # whereas new dir is cached.
-        #
-        #if stat.S_ISDIR(statgoo.st_mode) and tsumufs.fsAvailable.isSet():
-        #  return self._cachedDirents.has_key(fusepath)
-
-        # if / never stated yet, put it in _cachedDirents list
-        if fusepath == '/':
-           return self._cachedDirents.has_key(fusepath)
-
+        if stat.S_ISDIR(statgoo.st_mode) and tsumufs.fsAvailable.isSet():
+          return self._cachedDirents.has_key(fusepath)
       except OSError, e:
         if e.errno == errno.ENOENT:
           return False
