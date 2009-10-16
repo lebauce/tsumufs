@@ -35,7 +35,6 @@ pygtk.require('2.0')
 
 import gtk
 import gobject
-import egg.trayicon
 import pynotify
 import xattr
 
@@ -78,23 +77,17 @@ class TrayIconThread():
 
   def __init__(self):
 
-    # TODO: ping tsumufs and retreive default infos via dbus
+    # TODO: ping tsumufs and retrieve default infos via dbus
     if os.path.ismount("/var/tsumufs/overlay"):
       self._isUnmounted = False
 
     # Initializing TrayIcon object.
     pynotify.init('TsumuFS')
 
-    self._trayIcon = egg.trayicon.TrayIcon('TsumuFS')
+    self._trayIcon = gtk.StatusIcon()
     self._tooltips = gtk.Tooltips()
-    self._eventBox = gtk.EventBox()
-    self._eventBox.set_events(gtk.gdk.BUTTON_PRESS_MASK)
-    self._displayImage = gtk.Image()
-    self._eventBox.add(self._displayImage)
-    self._eventBox.connect('button_press_event', self._buttonPress)
-    self._trayIcon.connect('delete-event', self._cleanup)
-    self._trayIcon.add(self._eventBox)
-    self._trayIcon.show_all()
+    self._trayIcon.connect('popup-menu', self._popup)
+    self._trayIcon.set_visible(1)
 
     self._updateIcon()
 
@@ -121,18 +114,18 @@ class TrayIconThread():
       pixbuf.blit_from_file(path)
 
     size = self._trayIcon.get_size()
-    pixbuf.scale_simple(size[0], size[1], gtk.gdk.INTERP_BILINEAR)
-    self._displayImage.set_from_pixbuf(pixbuf)
+    pixbuf.scale_simple(size, size, gtk.gdk.INTERP_BILINEAR)
+    self._trayIcon.set_from_pixbuf(pixbuf)
 
   def _cleanup(self):
     gtk.main_quit()
 
-  def _buttonPress(self, widget, event):
+  def _popup(self, icon, event_button, event_time):
     """
     Creating gtkMenu to get informations about files which are not synchronized
     We don't care about Event.type
     """
-
+    
     menu = gtk.Menu()
     if self._isSynchronized:
         item1 = gtk.ImageMenuItem(_("Synchronized"))
@@ -206,8 +199,8 @@ class TrayIconThread():
     if len(self._syncQueue) > 0:
       item3.show()
     item2.show()
-    menu.popup(None, None, None, event.button, event.time)
-    menu.attach_to_widget(self._trayIcon, None)
+    menu.popup(None, None, gtk.status_icon_position_menu,
+               event_button, event_time, icon)
 
   def _notifyDisconnected(self):
     summary = 'Disconnected from server'
@@ -219,7 +212,6 @@ class TrayIconThread():
     notification.show()
 
   def _handleSynchronisationItemSignal(self, item):
-    print "_handleSynchronisationItemSignal " + str(item)
     if item['action'] == 'append':
       if len(self._syncQueue) == 0:
         self._isSynchronized = False
@@ -242,7 +234,6 @@ class TrayIconThread():
         self._syncTimer.start()
 
   def _handleConnectionStatusSignal(self, status):
-    print "_handleConnectionStatusSignal " + str(status)
     old_isConnected = self._isConnected
     self._isConnected = status
 
@@ -252,11 +243,9 @@ class TrayIconThread():
          self._notifyDisconnected()
 
   def _handleSynchronisationStatusSignal(self, status):
-    print "_handleSynchronisationStatusSignal " + str(status)
     self._updateIcon()
 
   def _handleUnmountedStatusSignal(self, status):
-    print "_handleUnmountedStatusSignal " + str(status)
     self._isUnmounted = status
     self._updateIcon()
 
