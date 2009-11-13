@@ -52,7 +52,7 @@ import pynfs.nfs4lib
 
 __version__ = (0, 14)
 
-debugMode = True
+debugMode = False
 debugLevel = 0
 
 progName   = None
