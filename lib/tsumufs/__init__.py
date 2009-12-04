@@ -62,6 +62,12 @@ mountSource  = None
 mountPoint   = None
 mountOptions = None
 
+# Set default values to options here,
+# I can't get default values working with optParse...
+rootUID      = os.getuid()
+rootGID      = os.getgid()
+rootMode     = 0555
+
 fsBaseDir    = None
 fsMountPoint = None
 fsMountCmd   = None

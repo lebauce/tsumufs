@@ -60,13 +60,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     and the startup of threads.
     '''
 
-    self._debug('Initializing cachemanager object.')
-    try:
-      tsumufs.cacheManager = tsumufs.CacheManager()
-    except:
-      self._debug('Exception: %s' % traceback.format_exc())
-      return False
-
     self._debug('Initializing permissions overlay object.')
     try:
       tsumufs.permsOverlay = tsumufs.PermissionsOverlay()
@@ -83,6 +76,13 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
+    self._debug('Initializing cachemanager object.')
+    try:
+      tsumufs.cacheManager = tsumufs.CacheManager()
+    except:
+      self._debug('Exception: %s' % traceback.format_exc())
+      return False
+  
     self._debug('Loading SyncQueue.')
     tsumufs.syncLog = tsumufs.SyncLog()
 
@@ -153,10 +153,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     # Start the threads
     self._debug('Starting sync thread.')
     self._syncThread.start()
-
+    
     # A virer !!
     tsumufs.unmounted.clear()
-
+            
     self._debug('fsinit complete.')
 
   def main(self, args=None):
@@ -184,7 +184,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self.file_class = FuseFileWrapper
     result = Fuse.main(self, args)
     self._debug('Fuse main event loop exited.')
-
 
     self._debug('Setting event and condition states.')
     tsumufs.unmounted.set()
@@ -236,7 +235,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     # Add in the named options we care about.
     self.parser.add_option(mountopt='fstype',
                            dest='fsType',
-                           default="nfs",
+                           default="nfs4",
                            help=('Set the type of the undelying filesystem'))
     self.parser.add_option(mountopt='fsbasedir',
                            dest='fsBaseDir',
@@ -279,6 +278,21 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            default=None,
                            help=('Set the directory name for cache storage '
                                  '[default: calculated]'))
+    self.parser.add_option(mountopt='rootuid',
+                           dest='rootUID',
+                           default=os.getuid(),
+                           help=('Set the overlay root directory owner uid '
+                                 '[default: current user]'))
+    self.parser.add_option(mountopt='rootgid',
+                           dest='rootGID',
+                           default=os.getgid(),
+                           help=('Set the overlay root directory owner gid '
+                                 '[default: current group]'))
+    self.parser.add_option(mountopt='rootmode',
+                           dest='rootMode',
+                           default=0555,
+                           help=('Set the overlay root directory mode '
+                                 '[default: 0555 (r-xr-xr-x)]'))
 
     self.parser.add_option('-O',
                            dest='mountOptions',
@@ -365,6 +379,9 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('fsMountCmd is %s' % tsumufs.fsMountCmd)
     self._debug('cacheBaseDir is %s' % tsumufs.cacheBaseDir)
     self._debug('cachePoint is %s' % tsumufs.cachePoint)
+    self._debug('rootMode is %d' % tsumufs.rootMode)
+    self._debug('rootUID is %d' % tsumufs.rootUID)
+    self._debug('rootGID is %d' % tsumufs.rootGID)
     self._debug('synclogPath is %s' % tsumufs.synclogPath)
     self._debug('permsPath is %s' % tsumufs.permsPath)
     self._debug('mountOptions is %s' % tsumufs.mountOptions)

@@ -147,6 +147,15 @@ class PermissionsOverlay(tsumufs.Debuggable):
 
     finally:
       self._lock.release()
+      
+  def hasPerms(self, fusepath):
+    '''
+    Check if overlay has fusepath key.
+
+    Returns:
+      Boolean
+    '''
+    return self.overlay.has_key(fusepath)
 
 
 @extendedattribute('root', 'tsumufs.perms-overlay')

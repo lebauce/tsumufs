@@ -448,11 +448,6 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         self._debug('***    %s(%d) in %s: %s' % line)
 
   def run(self):
-
-    #while True:
-    #  self._debug('Rien !!')
-    #  time.sleep(10)
-    
     try:
       while not tsumufs.unmounted.isSet():
         self._debug('TsumuFS not unmounted yet.')
@@ -461,7 +456,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         while (not tsumufs.fsBackend.pingServerOK()
                and not tsumufs.unmounted.isSet()):
           self._debug('sorry, fs unvailable')
-          time.sleep(5)
+          time.sleep(15)
 
         while (tsumufs.fsBackend.pingServerOK()
                and not os.path.ismount(tsumufs.fsMountPoint)
