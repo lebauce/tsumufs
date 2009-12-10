@@ -29,14 +29,19 @@
 
 #include "testhelpers.h"
 
+#define MAXLEN 256
 
-const char *g_existing_filename = "regular.file";
-const char *g_new_filename = "this.file.shouldnt.exist";
+
+const char *g_existing_filename = "%s/regular.file";
+const char *g_new_filename = "%s/this.file.shouldnt.exist";
+
+char g_existing_filepath[256];
+char g_new_filepath[256];
 
 
 int test_ftruncate_existing(void)
 {
-    int fd = open(g_existing_filename, O_RDWR);
+    int fd = open(g_existing_filepath, O_RDWR);
     int result = 0;
     int old_errno = errno;
 
@@ -46,7 +51,7 @@ int test_ftruncate_existing(void)
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to open %s in %s\n"
                            "Errno %d: %s\n",
-                           g_existing_filename, __func__,
+                           g_existing_filepath, __func__,
                            old_errno, strerror(old_errno));
     }
     TEST_OK();
@@ -57,7 +62,7 @@ int test_ftruncate_existing(void)
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to ftruncate %s in %s\n"
                            "Errno %d: %s\n",
-                           g_existing_filename, __func__,
+                           g_existing_filepath, __func__,
                            old_errno, strerror(old_errno));
 
         close(fd);
@@ -77,13 +82,13 @@ int test_truncate_existing(void)
 
     TEST_START();
 
-    result = truncate(g_existing_filename, 0);
+    result = truncate(g_existing_filepath, 0);
     if (result < 0) {
         old_errno = errno;
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to truncate %s in %s\n"
                            "Errno %d: %s\n",
-                           g_existing_filename, __func__,
+                           g_existing_filepath, __func__,
                            old_errno, strerror(old_errno));
     }
     TEST_OK();
@@ -93,7 +98,7 @@ int test_truncate_existing(void)
 
 int test_ftruncate_new_file(void)
 {
-    int fd = open(g_new_filename, O_CREAT|O_RDWR, 0644);
+    int fd = open(g_new_filepath, O_CREAT|O_RDWR, 0644);
     int result = 0;
     int old_errno = errno;
 
@@ -103,7 +108,7 @@ int test_ftruncate_new_file(void)
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to open %s in %s\n"
                            "Errno %d: %s\n",
-                           g_new_filename, __func__,
+                           g_new_filepath, __func__,
                            old_errno, strerror(old_errno));
     }
     TEST_OK();
@@ -114,7 +119,7 @@ int test_ftruncate_new_file(void)
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to ftruncate %s in %s\n"
                            "Errno %d: %s\n",
-                           g_new_filename, __func__,
+                           g_new_filepath, __func__,
                            old_errno, strerror(old_errno));
 
         close(fd);
@@ -122,7 +127,7 @@ int test_ftruncate_new_file(void)
     TEST_OK();
 
     close(fd);
-    unlink(g_new_filename);
+    unlink(g_new_filepath);
 
     TEST_COMPLETE_OK();
 }
@@ -134,14 +139,14 @@ int test_truncate_new_file(void)
 
     TEST_START();
 
-    result = truncate(g_new_filename, 0);
+    result = truncate(g_new_filepath, 0);
 
     if (result == 0) {
         old_errno = errno;
         TEST_FAIL();
         TEST_COMPLETE_FAIL("truncate nonexisting file %s failed in %s\n"
                            "Errno %d: %s\n",
-                           g_new_filename, __func__,
+                           g_new_filepath, __func__,
                            old_errno, strerror(old_errno));
     }
 
@@ -150,13 +155,13 @@ int test_truncate_new_file(void)
         TEST_FAIL();
         TEST_COMPLETE_FAIL("truncate nonexisting file %s failed in %s\n"
                            "Errno %d: %s\n",
-                           g_new_filename, __func__,
+                           g_new_filepath, __func__,
                            old_errno, strerror(old_errno));
     }
 
     TEST_OK();
 
-    unlink(g_new_filename);
+    unlink(g_new_filepath);
 
     TEST_COMPLETE_OK();
 }
@@ -184,6 +189,17 @@ int connected(void)
 int main(void)
 {
     int result = 0;
+    char *userdir = NULL;
+
+    if ((userdir = getenv("USR_DIR")) == NULL) {
+        userdir = ".";
+    }
+
+    snprintf(g_existing_filepath, MAXLEN, g_existing_filename, userdir);
+    snprintf(g_new_filepath, MAXLEN, g_new_filename, userdir);
+    printf("Using existing_filepath: %s, new_filepath: %s\n", 
+           g_existing_filepath, 
+           g_new_filepath);
 
     while (!connected()) {
         printf("Waiting for tsumufs to mount.\n");

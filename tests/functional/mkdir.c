@@ -30,12 +30,17 @@
 
 #include "testhelpers.h"
 
+#define MAXLEN 256
 
-const char *g_existing_dir = "dir";
-const char *g_missing_dir = "this.file.shouldnt.exist";
-const char *g_new_file = "this.file.shouldnt.exist/new.empty.file";
+
+const char *g_existing_dir_name = "dir";
+const char *g_missing_dir_name = "this.file.shouldnt.exist";
 const char *g_new_file_basename = "new.empty.file";
-const char *g_data = "foo bar baz\n";
+
+char *g_data = "foo bar baz\n";
+char g_existing_dir[MAXLEN];
+char g_missing_dir[MAXLEN];
+char g_new_file[MAXLEN];
 
 
 int connected(void)
@@ -345,6 +350,19 @@ int test_mkdir_with_new_file(void)
 int main(void)
 {
     int result = 0;
+    char *userdir = NULL;
+
+    if ((userdir = getenv("USR_DIR")) == NULL) {
+        userdir = ".";
+    }
+
+    snprintf(g_existing_dir, MAXLEN, "%s/%s", userdir, g_existing_dir_name);
+    snprintf(g_missing_dir, MAXLEN, "%s/%s", userdir, g_missing_dir_name);
+    snprintf(g_new_file, MAXLEN, "%s/%s/%s", userdir, g_missing_dir_name, g_new_file_basename);
+    printf("Using existing_dir: %s, missing_dir: %s, new_file: %s\n", 
+           g_existing_dir, 
+           g_missing_dir, 
+           g_new_file);
 
     while (!connected()) {
         printf("Waiting for tsumufs to mount.\n");

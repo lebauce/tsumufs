@@ -29,14 +29,18 @@
 
 #include "testhelpers.h"
 
+#define MAXLEN 256
 
-const char *g_testfilename = "this.file.shouldnt.exist";
+
+const char *g_testfilename = "%s/this.file.shouldnt.exist";
+
+char g_testfilepath[MAXLEN];
 
 
 int test_single_write(void)
 {
     const char *output = "Zorba!\n";
-    int fd = open(g_testfilename, O_CREAT|O_RDWR, 0644);
+    int fd = open(g_testfilepath, O_CREAT|O_RDWR, 0644);
     int total = 0;
     int result = 0;
     int old_errno = errno;
@@ -47,7 +51,7 @@ int test_single_write(void)
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to open %s in %s\n"
                            "Errno %d: %s\n",
-                           g_testfilename, __func__,
+                           g_testfilepath, __func__,
                            old_errno, strerror(old_errno));
     }
     TEST_OK();
@@ -60,7 +64,7 @@ int test_single_write(void)
             TEST_FAIL();
             TEST_COMPLETE_FAIL("Unable to write to %s in %s\n"
                                "Errno %d: %s\n",
-                               g_testfilename, __func__,
+                               g_testfilepath, __func__,
                                old_errno, strerror(old_errno));
 
             // Don't care about this output -- we're going to die soon, anyway.
@@ -77,7 +81,7 @@ int test_single_write(void)
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to close %s in %s\n"
                            "Errno %d: %s\n",
-                           g_testfilename, __func__,
+                           g_testfilepath, __func__,
                            old_errno, strerror(old_errno));
     }
     TEST_OK();
@@ -89,7 +93,7 @@ int test_multiple_writes(void)
 {
     const char *output = "Zorba!\n";
     int maxcount = 5;
-    int fd = open(g_testfilename, O_CREAT|O_RDWR, 0644);
+    int fd = open(g_testfilepath, O_CREAT|O_RDWR, 0644);
     int i = 0;
     int total = 0;
     int result = 0;
@@ -101,7 +105,7 @@ int test_multiple_writes(void)
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to create file %s\n"
                            "Errno %d: %s\n",
-                           g_testfilename, old_errno, strerror(old_errno));
+                           g_testfilepath, old_errno, strerror(old_errno));
     }
     TEST_OK();
 
@@ -119,7 +123,7 @@ int test_multiple_writes(void)
                 TEST_FAIL();
                 TEST_COMPLETE_FAIL("Unable to write to file %s\n"
                                    "Errno %d: %s\n",
-                                   g_testfilename, old_errno,
+                                   g_testfilepath, old_errno,
                                    strerror(old_errno));
             }
 
@@ -131,7 +135,7 @@ int test_multiple_writes(void)
     if (close(fd) < 0) {
         TEST_FAIL();
         TEST_COMPLETE_FAIL("Unable to close %s\nErrno %d: %s\n",
-                           g_testfilename, errno, strerror(errno));
+                           g_testfilepath, errno, strerror(errno));
     }
     TEST_OK();
 
@@ -161,6 +165,14 @@ int connected(void)
 int main(void)
 {
     int result = 0;
+    char *userdir;
+
+    if ((userdir = getenv("USR_DIR")) == NULL) {
+        userdir = ".";
+    }
+
+    snprintf(g_testfilepath, MAXLEN, g_testfilename, userdir);
+    printf("Using %s as test file path.\n", g_testfilepath);
 
     while (!connected()) {
         printf("Waiting for tsumufs to mount.\n");

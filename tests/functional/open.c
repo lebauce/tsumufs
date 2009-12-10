@@ -29,7 +29,10 @@
 #include "testhelpers.h"
 
 
-const char *g_testfilename = "this.file.shouldnt.exist";
+const char *g_testfilename = "%s/this.file.shouldnt.exist";
+
+char g_testfilepath[256];
+
 
 struct test_matrix {
     mode_t mode;
@@ -56,7 +59,7 @@ int test_open_enoent_failures()
     TEST_START();
 
     for (idx = 0; tests[idx].mode != -1; idx++) {
-        fd = open(g_testfilename, tests[idx].mode);
+        fd = open(g_testfilepath, tests[idx].mode);
         old_errno = errno;
 
         if (fd < 0) {
@@ -94,7 +97,7 @@ int test_open_exist()
 
     TEST_START();
 
-    fd = open(g_testfilename, O_RDWR|O_CREAT, 0644);
+    fd = open(g_testfilepath, O_RDWR|O_CREAT, 0644);
 
     if (fd < 0) {
         TEST_COMPLETE_FAIL("Test preparation in %s failed.\n"
@@ -109,7 +112,7 @@ int test_open_exist()
     }
 
     for (idx = 0; tests[idx].mode != -1; idx++) {
-        fd = open(g_testfilename, tests[idx].mode, 0644);
+        fd = open(g_testfilepath, tests[idx].mode, 0644);
         old_errno = errno;
 
         if (fd > 0) {
@@ -146,7 +149,7 @@ int test_open_create()
     TEST_START();
 
     for (idx = 0; tests[idx].mode != -1; idx++) {
-        fd = open(g_testfilename, tests[idx].mode);
+        fd = open(g_testfilepath, tests[idx].mode);
 
         if (fd < 0) {
             old_errno = errno;
@@ -168,13 +171,13 @@ int test_open_create()
         }
         TEST_OK();
 
-        if (unlink(g_testfilename) < 0) {
+        if (unlink(g_testfilepath) < 0) {
             old_errno = errno;
             TEST_FAIL();
             TEST_COMPLETE_FAIL("Unable to unlink %s.\n"
                                "Test index %d in %s failed.\n"
                                "Errno %d: %s\n",
-                               g_testfilename,
+                               g_testfilepath,
                                idx, __func__,
                                old_errno, strerror(old_errno));
         }
@@ -186,8 +189,8 @@ int test_open_create()
 
 int test_create_already_exists()
 {
-    int fd  = open(g_testfilename, O_CREAT | O_RDWR, 0644);
-    int fd2 = open(g_testfilename, O_CREAT | O_EXCL | O_RDWR, 0644);
+    int fd  = open(g_testfilepath, O_CREAT | O_RDWR, 0644);
+    int fd2 = open(g_testfilepath, O_CREAT | O_EXCL | O_RDWR, 0644);
 
     TEST_START();
 
@@ -235,7 +238,7 @@ int connected(void)
     size = getxattr(".", "tsumufs.connected", buf, strlen(buf));
 
     if (size == -1) {
-        perror("Unable to getxattr tsumufs.connected from current directory");
+        perror("Unable to getxattr  from current directory");
         exit(1);
     }
 
@@ -246,9 +249,17 @@ int connected(void)
     return 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     int result = 0;
+    char *userdir;
+
+    if ((userdir = getenv("USR_DIR")) == NULL) {
+        userdir = ".";
+    }
+
+    snprintf(g_testfilepath, 256, g_testfilename, userdir);
+    printf("Using %s as test file path.\n", g_testfilepath);
 
     while (!connected()) {
         printf("Waiting for tsumufs to mount.\n");

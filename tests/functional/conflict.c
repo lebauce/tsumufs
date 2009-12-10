@@ -29,9 +29,10 @@
 
 #include "testhelpers.h"
 
+#define MAXLEN 256
 
-const int MAXLEN = 256;
-const char *g_path_fmt = "%s/regular.file";
+
+const char *g_path_fmt = "%s/%s/regular.file";
 
 
 int connected(void)
@@ -83,6 +84,7 @@ void unpause_sync(void)
 int test_regular_file_conflict(void)
 {
     struct stat buf;
+    char *userdir = NULL;
     char *fusestr = "foo";
     char *nfsstr  = "xxx";
     char *conflictpath = "./.tsumufs-conflicts/regular.file";
@@ -98,8 +100,13 @@ int test_regular_file_conflict(void)
         exit(1);
     }
 
-    snprintf(fusepath, MAXLEN, g_path_fmt, ".");
-    snprintf(nfspath,  MAXLEN, g_path_fmt, getenv("NFS_DIR"));
+    if ((userdir = getenv("USR_DIR")) == NULL) {
+        userdir = ".";
+    }
+
+    snprintf(fusepath, MAXLEN, g_path_fmt, ".", userdir);
+    snprintf(nfspath,  MAXLEN, g_path_fmt, getenv("NFS_DIR"), userdir);
+    printf("Using nfspath: %s, fusepath: %s\n", nfspath, fusepath);
     pause_sync();
 
     TEST_START();

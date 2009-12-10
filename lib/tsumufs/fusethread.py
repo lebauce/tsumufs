@@ -156,7 +156,13 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     
     # A virer !!
     tsumufs.unmounted.clear()
-            
+    
+    self._debug('Adding / (%s) to permissions overlay.' % tsumufs.mountPoint)
+    tsumufs.permsOverlay.setPerms("/",
+                                  tsumufs.rootUID,
+                                  tsumufs.rootGID,
+                                  tsumufs.rootMode | stat.S_IFDIR)
+
     self._debug('fsinit complete.')
 
   def main(self, args=None):
