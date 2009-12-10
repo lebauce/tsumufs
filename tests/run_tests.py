@@ -142,6 +142,15 @@ if __name__ == '__main__':
         shutil.rmtree(cachebasedir)
       spawn(overlaycmd, env={'PYTHONPATH':"../lib"})
 
+      print "   awaiting fs (" + fsmountpoint + ") to copy fylesystem archive"
+      while not os.path.ismount(fsmountpoint):
+        time.sleep(1)
+      if user:
+        copydest = os.path.join(fsmountpoint, os.getlogin())
+      else:
+        copydest = fsmountpoint
+      os.system('cp -pPRf filesystem/* ' + copydest) 
+
       try:
         env = {'CACHE_DIR' : cachebasedir, 'NFS_DIR' : fsmountpoint, 'TEST_DIR' : overlaydir}
         if user:

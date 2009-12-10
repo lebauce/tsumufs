@@ -23,21 +23,16 @@ FUNC_TESTS     := $(shell echo $(FUNC_TEST_SRC) |sed -e 's/\.c//g')
 UMOUNT_CMD     := sudo umount
 FUMOUNT_CMD    := fusermount -u
 
-TEST_NFS_DIR    := /tmp/tsumufs-test-nfs-dir
-MOUNT_NFS_DIR   := /mnt/nfs
-
-TEST_SAMBA_DIR  := /tmp/tsumufs-test-samba-dir
-MOUNT_SAMBA_DIR := /mnt/samba
-
-TEST_SSHFS_DIR  := /tmp/tsumufs-test-sshfs-dir
-MOUNT_SSHFS_DIR := /mnt/sshfs
-
+TEST_DIR       := /tmp/tsumufs-test-dir
 TEST_CACHE_DIR := /tmp/tsumufs-cache-dir
+TEST_NFS_DIR   := /tmp/tsumufs-nfs-dir
 
 PYTHON   := $(shell which python)
 DESTDIR  := /
 BUILDDIR := $(CURDIR)/debian/tsumufs
 PROJECT  := tsumufs
+
+#fstype=nfs4,fsmountcmd=/bin/mount,fsunmountcmd=/bin/umount,fsmountmethod=fstab
 
 DEBUG_LEVEL := 0
 
@@ -85,9 +80,11 @@ test-environment:
 		exit 1; \
 	fi
 
-test-run: $(TEST_DIR) $(TEST_CACHE_DIR) $(TEST_NFS_DIR) ###test-environment clean
+test-run: test-environment clean $(TEST_DIR) $(TEST_CACHE_DIR) $(TEST_NFS_DIR)
+	rm -rf tests/filesystem
+	tar xf tests/filesystem.tar -C tests/
 
-	src/tsumufs -d -l $(DEBUG_LEVEL) \
+	src/tsumufs -d -l $(DEBUG_LEVEL) -O $(NFSOPTS) \
 		-o nfsmountpoint=$(TEST_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) \
 		$(NFSHOME) $(TEST_DIR)
 
@@ -102,37 +99,6 @@ test-run: $(TEST_DIR) $(TEST_CACHE_DIR) $(TEST_NFS_DIR) ###test-environment clea
 	cd $(OLD_PWD)
 
 	$(UMOUNT_CMD) $(TEST_DIR)
-
-clean-bast:
-	rm -rf tests/filesystem
-	tar xf tests/filesystem.tar -C tests/
-
-megabast:
-	src/tsumufs -l 0 -o nfsmountpoint=/mnt/nfs,cachebasedir=/tmp/tsumufs-cache-dir,nfsmountcmd=true 192.168.1.4:/home /tmp/tsumufs-test1-dir
-
-bast: $(TEST_DIR) $(TEST_CACHE_DIR)
-#######	src/tsumufs -l 0 -o nfsmountpoint=/mnt/nfs,cachebasedir=/tmp/tsumufs-cache-dir,nfsmountcmd=true 192.168.1.4:/home /tmp/tsumufs-test1-dir
-	
-	src/tsumufs -l 0 -o nfsmountpoint=$(MOUNT_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(NFSHOME) $(TEST_DIR)
-	
-nfs: $(TEST_CACHE_DIR) $(TEST_NFS_DIR)
-	src/tsumufs -l 0 -o fsmountpoint=$(MOUNT_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(NFSHOME) $(TEST_NFS_DIR) nfs
-
-samba:$(TEST_CACHE_DIR) $(TEST_SAMBA_DIR) 
-	src/tsumufs -l 0 -o fsmountpoint=$(MOUNT_SAMBA_DIR),cachebasedir=$(TEST_CACHE_DIR) $(SAMBAHOME) $(TEST_SAMBA_DIR) samba
-	
-sshfs:$(TEST_SSHFS_DIR) $(TEST_CACHE_DIR)
-	src/tsumufs -l 0 -o fsmountpoint=$(MOUNT_SSHFS_DIR),cachebasedir=$(TEST_CACHE_DIR) $(SSHFSHOME) $(TEST_SSHFS_DIR) sshfs	
-	
-	
-shutdown:
-	-$(UMOUNT_CMD) $(TEST_NFS_DIR)
-	-rmdir $(TEST_NFS_DIR)
-
-#	cd $(TEST_DIR);             \
-	CACHE_DIR=$(TEST_CACHE_DIR) \
-	NFS_DIR=$(TEST_NFS_DIR)     \
-	TEST_DIR=$(TEST_DIR)        \
 
 tail-logs:
 	sudo tail -f /var/log/messages |grep --color "tsumufs($(USER)):"
@@ -154,15 +120,6 @@ $(TEST_CACHE_DIR):
 
 $(TEST_NFS_DIR):
 	mkdir -p $(TEST_NFS_DIR)
-	chown $(USER):$(shell id -g) $(TEST_NFS_DIR)
-
-	
-$(TEST_SAMBA_DIR):
-	mkdir -p $(TEST_SAMBA_DIR)
-	chown $(USER):$(shell id -g) $(TEST_CACHE_DIR)
-	
-$(TEST_SSHFS_DIR):
-	mkdir -p $(TEST_SSHFS_DIR)
 	chown $(USER):$(shell id -g) $(TEST_CACHE_DIR)
 
 functional-tests: test-environment clean $(FUNC_TESTS) $(TEST_DIR) $(TEST_CACHE_DIR) $(TEST_NFS_DIR)
@@ -171,8 +128,11 @@ functional-tests: test-environment clean $(FUNC_TESTS) $(TEST_DIR) $(TEST_CACHE_
 		tar xf tests/filesystem.tar -C tests/; \
 		echo;                          \
 		echo --- $$test;               \
+		if [ ! -z "$(TSUMUOPTS)" ]; then          \
+			TSUMUOPTS=",$(TSUMUOPTS)"; \
+		fi;                                       \
 		src/tsumufs -d -l $(DEBUG_LEVEL) -O $(NFSOPTS)   \
-			-o nfsmountpoint=$(TEST_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR) \
+			-o fsmountpoint=$(TEST_NFS_DIR),cachebasedir=$(TEST_CACHE_DIR)$(TSUMUOPTS) \
 			$(NFSHOME) $(TEST_DIR);    \
 		OLDCWD=$$(pwd);                \
 		export CACHE_DIR=$(TEST_CACHE_DIR); \
@@ -268,3 +228,4 @@ dist: $(DIST_FILENAME)
 .PHONY: all test test-environment unit-tests functional-tests \
 		check fixspaces clean mrclean dist tag \
 		test-run tail-logs force-shutdown find-todos
+
