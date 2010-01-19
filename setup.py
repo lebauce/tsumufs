@@ -27,6 +27,7 @@ sys.path.append('lib')
 import tsumufs
 
 from distutils.core import setup
+from DistUtilsExtra.command import *
 
 scripts = ['src/tsumufs']
 scripts.extend(glob.glob(os.path.join('utils', '*')))
@@ -45,5 +46,9 @@ setup(name='TsumuFS',
                    glob.glob(os.path.join('man', '*'))),
                   ('/usr/share/tsumufs/icons',
                    glob.glob(os.path.join('icons', '*')))],
-      requires=['fuse', 'xattr', 'pygtk', 'gtk', 'egg']
-      )
+      requires=['fuse', 'xattr', 'pygtk', 'gtk', 'egg'],
+      cmdclass = { "build" : build_extra.build_extra,
+                   "build_i18n" :  build_i18n.build_i18n,
+                   "build_help" :  build_help.build_help,
+                   "build_icons" :  build_icons.build_icons }
+)
