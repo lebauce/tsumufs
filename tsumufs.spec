@@ -17,8 +17,8 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Prefix: %{_prefix}
 BuildArch: noarch
 Url: http://tsumufs.googlecode.com/
-BuildRequires: python-devel fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra
-Requires: pyxattr fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra
+BuildRequires: python intltool python-devel fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra
+Requires: python pyxattr fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra
 
 
 %description
