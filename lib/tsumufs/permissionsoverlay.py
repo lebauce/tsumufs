@@ -20,6 +20,7 @@ import os
 import errno
 import threading
 import cPickle
+import magic
 
 import tsumufs
 from extendedattributes import extendedattribute
@@ -39,6 +40,15 @@ class PermissionsOverlay(tsumufs.Debuggable):
                    # the SyncThread. As a result, we store this to disk
                    # in a serialized format alongside the synclog.
 
+  _magic = None    # LibMagic object for mimetypes support
+
+  _cacheDb = None  # Database object
+
+  _cacheDbTables = { "file"    : [ "inode", "filename", "directory", "uid", "gid", "mode", "type" ],
+                     "extattr" : [ "id" ] }
+
+  _getTablesQuery = "SELECT name FROM sqlite_master WHERE type='table'"
+
   def __init__(self):
     self._lock = threading.Lock()
 
@@ -49,6 +59,49 @@ class PermissionsOverlay(tsumufs.Debuggable):
     except IOError, e:
       if e.errno != errno.ENOENT:
         raise
+
+    self._cacheDb = tsumufs.DatabaseHelper(tsumufs.cacheDbPath)
+    existingTables = self._cacheDb.execute(self._getTablesQuery)
+
+    # Check all required tables
+    tables = self._cacheDbTables.keys()[:]
+    for table in existingTables:
+      tables.remove(table[0])
+
+    if tables:
+      self._debug('Following tables not found: %s. Initializing database.'
+                  % str(tables))
+      self._initilizeCacheDatabase()
+
+    self._magic = magic.open(magic.MAGIC_MIME)
+    self._magic.load()
+
+  def _initilizeCacheDatabase(self):
+    """
+    Build database from scratch, create empty required tables.
+    Dynamically build the script according to objects attrs.
+    """
+
+    for table in self._cacheDbTables:
+      try:
+        self._cacheDb.execute("DROP TABLE '%s'" % table)
+      except:
+        # Table does not exists
+        pass
+
+    createDbScript = ""
+    for table in self._cacheDbTables:
+      createDbScript = createDbScript + ("create table %s(" % table)
+
+      for field in self._cacheDbTables[table]:
+        createDbScript = createDbScript + ("%s" % field)
+
+        if field != self._cacheDbTables[table][-1]:
+          createDbScript = createDbScript + ','
+
+      createDbScript = createDbScript + ");\n"
+
+    self._cacheDb.execute(createDbScript, script=True)
 
   def __str__(self):
     return '<PermissionsOverlay %s>' % str(self.overlay)
@@ -100,6 +153,20 @@ class PermissionsOverlay(tsumufs.Debuggable):
     finally:
       self._lock.release()
 
+  def getPermsFromQuery(self, query):
+    '''
+    Return a result tuple according to query.
+
+    Returns:
+      Tuple.
+    '''
+
+    # TODO:
+    # Returning a FilePermission object list,
+    # Do not use sql queries, use a filtering struct to represent
+    # which FilePermission objects we want among all.
+    return self._cacheDb.execute(query)
+
   def setPerms(self, fusepath, uid, gid, mode):
     '''
     Store a new FilePermission object, indexed by it's inode number.
@@ -113,8 +180,16 @@ class PermissionsOverlay(tsumufs.Debuggable):
 
     try:
       self._lock.acquire()
-
       inum = self._getFileInum(fusepath)
+      mimetype = str(self._magic.file(tsumufs.cachePathOf(fusepath)).split(";")[0])
+
+      if self.overlay.has_key(inum):
+        query = "UPDATE file SET uid=%d, gid=%d, mode=%d, type='%s' WHERE inode=%d" % \
+                (uid, gid, mode, mimetype, inum)
+      else:
+        query = "INSERT INTO file VALUES (%d, '%s','%s',%d,%d,%d,'%s')" % \
+                (inum, os.path.basename(fusepath), os.path.dirname(fusepath),
+                 uid, gid, mode, mimetype)
 
       perms = tsumufs.FilePermission()
       perms.uid = uid
@@ -123,6 +198,8 @@ class PermissionsOverlay(tsumufs.Debuggable):
 
       self.overlay[inum] = perms
       self._checkpoint()
+
+      self._cacheDb.execute(query, commit=True)
 
     finally:
       self._lock.release()
@@ -145,9 +222,11 @@ class PermissionsOverlay(tsumufs.Debuggable):
       del self.overlay[inum]
       self._checkpoint()
 
+      self._cacheDb.execute("DELETE FROM file WHERE inode=%d" % inum)
+
     finally:
       self._lock.release()
-      
+
   def hasPerms(self, fusepath):
     '''
     Check if overlay has fusepath key.
@@ -156,7 +235,6 @@ class PermissionsOverlay(tsumufs.Debuggable):
       Boolean
     '''
     return self.overlay.has_key(fusepath)
-
 
 @extendedattribute('root', 'tsumufs.perms-overlay')
 def xattr_permsOverlay(type_, path, value=None):

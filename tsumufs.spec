@@ -18,7 +18,7 @@ Prefix: %{_prefix}
 BuildArch: noarch
 Url: http://tsumufs.googlecode.com/
 BuildRequires: python intltool python-devel fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra
-Requires: python pyxattr fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra
+Requires: python pyxattr fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra python-magic
 
 
 %description

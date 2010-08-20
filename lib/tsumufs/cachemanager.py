@@ -58,7 +58,8 @@ class CacheManager(tsumufs.Debuggable):
 
   _cacheSpec = {}          # A hash of paths to bools to remember the policy of
                            # whether files or parent directories (recursively)
-  @benchmark                         
+
+  @benchmark
   def __init__(self):
     # Install our custom exception handler so that any exceptions are
     # output to the syslog rather than to /dev/null.
@@ -214,16 +215,16 @@ class CacheManager(tsumufs.Debuggable):
 
       if 'enoent' in opcodes:
         raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
-        
+
       try:
         self._debug('Statting %s' % realpath)
 
         if 'use-fs' in opcodes:
           result = self._cacheStat(realpath)
           tsumufs.NameToInodeMap.setNameToInode(realpath, result.st_ino)
-          #result.st_blksize = 1024* 32
+
           return result
-      
+
         else:
           try:
             perms = tsumufs.permsOverlay.getPerms(fusepath)
@@ -238,7 +239,7 @@ class CacheManager(tsumufs.Debuggable):
                                           cachestat.st_gid,
                                           cachestat.st_mode)
             perms = tsumufs.permsOverlay.getPerms(fusepath)
-            
+
           perms = perms.overlayStatFromFile(realpath)
           self._debug('Returning %s as perms.' % repr(perms))
 
@@ -936,7 +937,11 @@ class CacheManager(tsumufs.Debuggable):
                                       curstat.st_mode)
 
       self._debug('Caching directory %s to disk.' % fusepath)
-      self._cachedDirents[fusepath] = os.listdir(fspath)
+      try:
+        self._cachedDirents[fusepath] = os.listdir(fspath)
+      except OSError, e:
+        self._debug('Cannot list directory %s (%s)' % (fusepath, e.strerror))
+        self._cachedDirents[fusepath] = []
 
     finally:
       self.unlockFile(fusepath)
@@ -982,7 +987,7 @@ class CacheManager(tsumufs.Debuggable):
         # Caching a directory to disk -- call cacheDir instead.
         self._debug('Request to cache a directory -- calling _cacheDir')
         self._cacheDir(fusepath)
-      
+
       else:
         if (stat.S_ISREG(curstat.st_mode) or
             stat.S_ISFIFO(curstat.st_mode) or

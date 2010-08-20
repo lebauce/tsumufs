@@ -1,4 +1,4 @@
-# Copyright (C) 2008  Google, Inc. All Rights Reserved.
+# Copyright (C) 2010  Agorabox. All Rights Reserved.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by

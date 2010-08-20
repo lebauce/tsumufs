@@ -36,7 +36,8 @@ class InodeChange(tsumufs.Debuggable):
   gid         = None
   symlinkPath = None
 
-  # Bouuuuu a virer c'est juste pour pas me faire chier
+  # TODO:
+  # Use dedicated call variables ctime, mtime, permissions
   mode = None
   times = None
 

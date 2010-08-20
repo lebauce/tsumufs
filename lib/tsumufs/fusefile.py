@@ -49,6 +49,11 @@ class FuseFile(tsumufs.Debuggable):
 
   @benchmark
   def __init__(self, path, flags, mode=None, uid=None, gid=None, pid=None):
+    # Restore the real file path if the file has been acceded via
+    # a view virtual folder.
+    if tsumufs.viewsManager.isLoadedViewPath(path):
+      path = tsumufs.viewsManager.realFilePath(path)
+
     self._path  = path
     self._fdFlags = flags
     self._fdMode  = mode

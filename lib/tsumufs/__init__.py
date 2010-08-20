@@ -27,6 +27,7 @@ import grp
 
 from debuggable import *
 from cachemanager import *
+from viewsmanager import *
 from synclog import *
 from fusefile import *
 from fusethread import *
@@ -40,6 +41,7 @@ from permissionsoverlay import *
 from extendedattributes import *
 from notification import *
 from metrics import *
+from database import *
 
 from fsBackend import *
 from nfsBackend import *
@@ -79,6 +81,10 @@ cacheBaseDir = '/var/cache/tsumufs'
 cacheSpecDir = '/var/lib/tsumufs/cachespec'
 cachePoint   = None
 cacheManager = None
+cacheDbPath  = None
+
+viewsPoint = ""
+viewsManager = None
 
 conflictDir  = '/.tsumufs-conflicts'
 

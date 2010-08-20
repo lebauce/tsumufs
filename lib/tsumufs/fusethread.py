@@ -60,6 +60,22 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     and the startup of threads.
     '''
 
+    self._debug('Initializing cachemanager object.')
+    try:
+      tsumufs.cacheManager = tsumufs.CacheManager()
+    except:
+      exc_info = sys.exc_info()
+
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
+      return False
+
     self._debug('Initializing permissions overlay object.')
     try:
       tsumufs.permsOverlay = tsumufs.PermissionsOverlay()
@@ -76,13 +92,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
-    self._debug('Initializing cachemanager object.')
-    try:
-      tsumufs.cacheManager = tsumufs.CacheManager()
-    except:
-      self._debug('Exception: %s' % traceback.format_exc())
-      return False
-  
     self._debug('Loading SyncQueue.')
     tsumufs.syncLog = tsumufs.SyncLog()
 
@@ -153,6 +162,22 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     # Start the threads
     self._debug('Starting sync thread.')
     self._syncThread.start()
+
+    self._debug('Initializing viewsmanager object.')
+    try:
+      tsumufs.viewsManager = tsumufs.ViewsManager()
+    except:
+      exc_info = sys.exc_info()
+
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
+      return False
     
     # A virer !!
     tsumufs.unmounted.clear()
@@ -284,6 +309,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            default=None,
                            help=('Set the directory name for cache storage '
                                  '[default: calculated]'))
+    self.parser.add_option(mountopt='viewspoint',
+                           dest='viewsPoint',
+                           default="",
+                           help=('Set the relative views folders path'))
     self.parser.add_option(mountopt='rootuid',
                            dest='rootUID',
                            default=os.getuid(),
@@ -360,6 +389,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     if tsumufs.mountPoint[0] != '/':
       tsumufs.mountPoint = os.path.join(os.getcwd(), tsumufs.mountPoint)
 
+    # Make sure the viewPoint is a fully qualified pathname.
+    if not tsumufs.viewsPoint or tsumufs.viewsPoint[0] != '/':
+      tsumufs.viewsPoint = os.path.join("/", tsumufs.viewsPoint)
+
     # Shove the proper mountPoint into FUSE's mouth.
     self.fuse_args.mountpoint = tsumufs.mountPoint
 
@@ -379,19 +412,29 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     tsumufs.permsPath = os.path.abspath(os.path.join(tsumufs.cachePoint,
                                                      '../permissions.ovr'))
 
+    tsumufs.cacheDbPath = os.path.abspath(os.path.join(tsumufs.cachePoint,
+                                                       '../cache.db'))
+
     self._debug('fsType is %s' % tsumufs.fsType)
     self._debug('mountPoint is %s' % tsumufs.mountPoint)
     self._debug('fsMountPoint is %s' % tsumufs.fsMountPoint)
     self._debug('fsMountCmd is %s' % tsumufs.fsMountCmd)
     self._debug('cacheBaseDir is %s' % tsumufs.cacheBaseDir)
     self._debug('cachePoint is %s' % tsumufs.cachePoint)
+    self._debug('viewsPoint is %s' % tsumufs.viewsPoint)
     self._debug('rootMode is %d' % tsumufs.rootMode)
     self._debug('rootUID is %d' % tsumufs.rootUID)
     self._debug('rootGID is %d' % tsumufs.rootGID)
     self._debug('synclogPath is %s' % tsumufs.synclogPath)
     self._debug('permsPath is %s' % tsumufs.permsPath)
+    self._debug('cacheDbPath is %s' % tsumufs.cacheDbPath)
     self._debug('mountOptions is %s' % tsumufs.mountOptions)
 
+  def getManager(self, path):
+    if tsumufs.viewsManager.isLoadedViewPath(path):
+      return tsumufs.viewsManager
+    else:
+      return tsumufs.cacheManager
 
   ######################################################################
   # Filesystem operations and system calls below here
@@ -412,7 +455,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: getattr (%d) | self: %s | path: %s' % (self.GetContext()['pid'], repr(self), path))
 
     try:
-      result = tsumufs.cacheManager.statFile(path)
+      result = self.getManager(path).statFile(path)
       self._debug('Returning (%d, %d, %o)' %
                   (result.st_uid, result.st_gid, result.st_mode))
 
@@ -450,7 +493,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                  'value: %s | size: %d')
                 % (path, name, value, size))
 
-    mode = tsumufs.cacheManager.statFile(path).st_mode
+    mode = self.getManager(path).statFile(path).st_mode
 
     if path == '/':
       type_ = 'root'
@@ -480,7 +523,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                 % (path, name, size))
 
     name = name.lower()
-    mode = tsumufs.cacheManager.statFile(path).st_mode
+    mode = self.getManager(path).statFile(path).st_mode
 
     if path == '/':
       type_ = 'root'
@@ -490,6 +533,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       type_ = 'file'
 
     try:
+      # Restore the real file path if the file has been acceded via
+      # a view virtual folder.
+      if tsumufs.viewsManager.isLoadedViewPath(path):
+        path = tsumufs.viewsManager.realFilePath(path)
+
       xattr = tsumufs.ExtendedAttributes.getXAttr(type_, path, name)
       self._debug('Got %s from xattr callback.' % str(xattr))
 
@@ -562,6 +610,32 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       return -e.errno
 
   @benchmark
+  def opendir(self, path):
+    '''
+    Test for access to a directory path.
+
+    Returns:
+      True upon successful check, otherwise an errno code is
+      returned.
+    '''
+
+    self._debug('opcode: opendir | path: %s' % path)
+
+    context = self.GetContext()
+    self._debug('uid: %s, gid: %s, pid: %s' %
+                (repr(context['uid']),
+                 repr(context['gid']),
+                 repr(context['pid'])))
+
+    try:
+      self.getManager(path).access(context['uid'], path, os.R_OK | os.X_OK)
+      return 0
+    except OSError, e:
+      self._debug('opendir: Caught OSError: errno %d: %s'
+                  % (e.errno, e.strerror))
+      return -e.errno
+
+  @benchmark
   def readdir(self, path, offset):
     '''
     Generator callback that returns a fuse.Direntry object every time
@@ -577,16 +651,20 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     try:
       filename = None
       context = self.GetContext()
-      tsumufs.cacheManager.access(context['uid'], path, os.R_OK)
+      self.getManager(path).access(context['uid'], path, os.R_OK)
 
-      for filename in tsumufs.cacheManager.getDirents(path):
+      filenames = self.getManager(path).getDirents(path)
+      if path == tsumufs.viewsPoint:
+        filenames += tsumufs.viewsManager.getDirents(path)
+
+      for filename in filenames:
         if filename in [ '.', '..' ]:
           dirent = fuse.Direntry(filename)
           dirent.type = stat.S_IFDIR
           dirent.offset = offset
         else:
           pathname = os.path.join(path, filename)
-          stat_result = tsumufs.cacheManager.statFile(pathname)
+          stat_result = self.getManager(pathname).statFile(pathname)
 
           dirent        = fuse.Direntry(filename)
           dirent.type   = stat.S_IFMT(stat_result.st_mode)
@@ -596,7 +674,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     except OSError, e:
       self._debug('readdir: Caught OSError on %s: errno %d: %s'
                   % (filename, e.errno, e.strerror))
-      yield -e.errno
 
   @benchmark
   def unlink(self, path):
@@ -1003,7 +1080,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                  repr(context['pid'])))
 
     try:
-      tsumufs.cacheManager.access(context['uid'], path, mode)
+      self.getManager(path).access(context['uid'], path, mode)
       return 0
     except OSError, e:
       self._debug('access: Caught OSError: errno %d: %s'
