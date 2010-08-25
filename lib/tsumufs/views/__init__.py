@@ -48,11 +48,8 @@ class View(tsumufs.Debuggable):
 
     return [ tuple[0] for tuple in tuples ]
 
-  def getDirents(self, path):
+  def _getPathDirents(self, path):
     depth = min(path.count("/"), len(self.levels) - 1)
-
-    dirents = []
-    occurrences = {}
 
     self._debug("get dirents of level '%s' in view '%s'" %
                 ("/".join(self.levels[:depth + 1]), self.name))
@@ -65,7 +62,13 @@ class View(tsumufs.Debuggable):
 
     # Then filters the tuple-based result and format the output into a list
     # according to the '_postFunction' with current depth level.
-    paths = self._postFunction(self.levels[depth], tuples, path)
+    return self._postFunction(self.levels[depth], tuples, path)
+
+  def getDirents(self, path):
+    dirents = []
+    occurrences = {}
+
+    paths = self._getPathDirents(path)
 
     # Fills the result list with result file names, handles duplicated
     # names and save the real paths corresponding to of virtual files paths
@@ -106,7 +109,12 @@ class View(tsumufs.Debuggable):
   def statFile(self, path):
     if self.isFileLevel(path):
       pathToStat = self.realFilePath(path)
+
     else:
+      # List parent directory and check if this path is valid
+      if path.count("/") and path not in self._getPathDirents(os.path.dirname(path)):
+        raise OSError(2, "No such file or directory", path)
+
       pathToStat = tsumufs.viewsPoint
 
     return tsumufs.cacheManager.statFile(pathToStat)
