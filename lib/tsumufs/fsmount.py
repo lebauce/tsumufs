@@ -28,11 +28,11 @@ import dataregion
 import tsumufs
 
 
-class FSBackendError(Exception):
+class FSMountError(Exception):
   pass
 
 
-class FSBackend(object):
+class FSMount(tsumufs.Debuggable):
   '''
 
   This object is responsible for accessing files and data in the File System
@@ -79,9 +79,6 @@ class FSBackend(object):
 #                   % (filename, tb[0], tb[1], tb[2], thread.get_ident()))
 
     self._fileLocks[filename].release()
-
-  def pingServerOK(self):
-    return "not yet implemented"
 
   def fsMountCheckOK(self):
     '''
@@ -135,7 +132,7 @@ class FSBackend(object):
 
           tsumufs.fsAvailable.clear()
           # tsumufs.fsAvailable.notifyAll()
-          raise tsumufs.FSBackendError()
+          raise tsumufs.FSMountError()
         else:
           raise
 
@@ -169,7 +166,6 @@ class FSBackend(object):
 
       try:
         fspath = tsumufs.fsPathOf(filename)
-
         fp = open(fspath, 'r+')
         fp.seek(start)
         fp.write(data)
@@ -184,7 +180,7 @@ class FSBackend(object):
           tsumufs.fsAvailable.clear()
           # tsumufs.fsAvailable.notifyAll() # TODO: AttributeError
 
-          raise tsumufs.FSBackendError()
+          raise tsumufs.FSMountError()
         else:
           raise
 
@@ -215,7 +211,7 @@ class FSBackend(object):
           tsumufs.fsAvailable.clear()
           # tsumufs.fsAvailable.notifyAll()
 
-          raise tsumufs.FSBackendError()
+          raise tsumufs.FSMountError()
         else:
           raise
 
@@ -299,5 +295,5 @@ class FSBackend(object):
       self._debug('Unmount of file system succeeded.')
       return True
 
-    self._debug('Invalidating name to inode map')
-    tsumufs.NameToInodeMap.invalidate()
+#    self._debug('Invalidating name to inode map')
+#    tsumufs.NameToInodeMap.invalidate()

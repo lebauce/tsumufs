@@ -17,13 +17,6 @@
 '''TsumuFS, a generic-based caching filesystem.'''
 
 import os
-import errno
-import sys
-import stat
-import syslog
-import thread
-import threading
-import dataregion
 import socket
 import tsumufs
 
@@ -31,10 +24,12 @@ from pynfs.nfs4constants import *
 from pynfs.nfs4types import *
 from pynfs import nfs4lib 
 
-class NFSBackendError(Exception):
+
+class NFSMountError(Exception):
   pass
 
-class NFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
+
+class NFSMount(tsumufs.FSMount):
 
   _ncl = None
 
@@ -46,7 +41,7 @@ class NFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
          self.server_port = int(mountOpt[5:])
          break
 
-    tsumufs.FSBackend.__init__(self)
+    tsumufs.FSMount.__init__(self)
 
   def pingServerOK(self):
     try:

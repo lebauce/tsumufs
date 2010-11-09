@@ -21,25 +21,29 @@ import sys
 import tsumufs
 from dataregion import *
 
+from ufo.database import *
 
-class InodeChange(tsumufs.Debuggable):
+
+class FileChangeDocument(Document, tsumufs.Debuggable):
   '''
-  Class that represents any change to an inode and the data that it
-  points to.
+  CouchDb document that represents any change to a file
+  and the data that it points to.
   '''
 
-  dataRegions = []
-  ctime       = None
-  mtime       = None
-  permissions = None
-  uid         = None
-  gid         = None
-  symlinkPath = None
+  doctype       = TextField(default="FileChangeDocument")
+  syncchangeid  = TextField()
 
-  # TODO:
-  # Use dedicated call variables ctime, mtime, permissions
-  mode = None
-  times = None
+  mode  = BooleanField()
+  uid   = BooleanField()
+  gid   = BooleanField()
+  times = BooleanField()
+
+  symlinkPath = TextField()
+
+  @ViewField.define('filechange')
+  def by_syncchangeid(doc):
+    if doc['doctype'] == "FileChangeDocument":
+      yield doc['syncchangeid'], doc
 
   def __repr__(self):
     '''
@@ -47,18 +51,16 @@ class InodeChange(tsumufs.Debuggable):
     object.
     '''
 
-    rep = '<InodeChange %s' % repr(self.dataRegions)
+    rep = '<FileChangeDocument %s' % self.syncchangeid
 
-    if self.ctime:
-      rep += ' ctime: %d' % self.ctime
-    if self.mtime:
-      rep += ' mtime: %d' % self.mtime
-    if self.permissions:
-      rep += ' perms: %o' % self.permissions
+    if self.times:
+      rep += ' times: %s' % self.times
+    if self.mode:
+      rep += ' mode: %s' % self.mode
     if self.uid:
-      rep += ' uid: %d' % self.uid
+      rep += ' uid: %s' % self.uid
     if self.gid:
-      rep += ' gid: %d' % self.gid
+      rep += ' gid: %s' % self.gid
     if self.symlinkPath:
       rep += ' symlinkPath: %s' % self.symlinkPath
 
@@ -69,9 +71,13 @@ class InodeChange(tsumufs.Debuggable):
   def __str__(self):
     return repr(self)
 
-  def __init__(self):
-    self._setName('InodeChange')
+  def __init__(self, **hargs):
+    self._setName('FileChangeDocument')
     sys.excepthook = tsumufs.syslogExceptHook
+
+    Document.__init__(self, **hargs)
+
+    self._dataRegions = DocumentHelper(DataRegionDocument, tsumufs.dbName, batch=True)
 
   def addDataChange(self, start, end, data):
     '''
@@ -82,28 +88,31 @@ class InodeChange(tsumufs.Debuggable):
     can.
     '''
 
-    accumulator = DataRegion(start, end, data)
-    newlist = []
+    accumulator = DataRegionDocument(start=start, end=end, data=data)
 
-    for r in self.dataRegions:
+    for r in self._dataRegions.by_filechangeid(key=self.id):
       if r.canMerge(accumulator):
         accumulator = accumulator.mergeWith(r)
       else:
-        newlist.append(accumulator)
+        self._dataRegions.create(filechangeid=self.id,
+                                 start=accumulator.start,
+                                 end=accumulator.end,
+                                 data=accumulator.data)
         accumulator = r
 
-    newlist.append(accumulator)
-    self.dataRegions = newlist
+    self._dataRegions.create(filechangeid=self.id,
+                             start=accumulator.start,
+                             end=accumulator.end,
+                             data=accumulator.data)
 
-  def addMetaDataChange(self, mode, uid, gid, times):
+  def addMetaDataChange(self, **metachanges):
     '''
     Method to add a representation of meta changes. 
     '''
 
-    self.mode = mode
-    self.times = times
-    self.uid = uid
-    self.gid = gid
+    for metachange in metachanges:
+      if metachanges[metachange]:
+        setattr(self, metachange, metachanges[metachange])
 
   def getDataChanges(self):
     '''
@@ -111,7 +120,7 @@ class InodeChange(tsumufs.Debuggable):
     pointed to by this inode.
     '''
 
-    return self.dataRegions
+    return [ doc for doc in self._dataRegions.by_filechangeid(key=self.id) ]
 
   def getMetaDataChanges(self):
     '''
@@ -120,4 +129,12 @@ class InodeChange(tsumufs.Debuggable):
     '''
 
     return self.mode, self.uid, self.gid, self.times
+
+  def clearDataChanges(self):
+    '''
+    Method to clear the dataregions list for this change.
+    '''
+
+    for dataregion in self._dataRegions.by_filechangeid(key=self.id):
+      self._dataRegions.delete(dataregion)
 

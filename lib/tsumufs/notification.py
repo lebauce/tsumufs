@@ -19,7 +19,6 @@
 import os, time
 import sys
 import tsumufs
-import threading
 import traceback
 
 import gobject
@@ -46,7 +45,7 @@ class DbusNotifier(tsumufs.Debuggable, dbus.service.Object):
     pass
 
   @dbus.service.signal(dbus_interface='org.tsumufs.NotificationService')
-  def _notifySynchronisationStatus(self, value):
+  def _notifySyncWorkStatus(self, value):
     pass
 
   @dbus.service.signal(dbus_interface='org.tsumufs.NotificationService')
@@ -54,15 +53,15 @@ class DbusNotifier(tsumufs.Debuggable, dbus.service.Object):
     pass
 
   @dbus.service.signal(dbus_interface='org.tsumufs.NotificationService')
-  def _notifySynchronisationItem(self, value):
+  def _notifySyncPauseStatus(self, value):
     pass
 
   def notify(self, type, value):
-    
-    signals = { 'connection'      : self._notifyConnectionStatus,
-                'synchronisation' : self._notifySynchronisationStatus,
-                'unmounted'       : self._notifyUnmountedStatus,
-                'synchitem'       : self._notifySynchronisationItem,}
+
+    signals = { 'connection' : self._notifyConnectionStatus,
+                'syncwork'   : self._notifySyncWorkStatus,
+                'unmounted'  : self._notifyUnmountedStatus,
+                'syncpause'  : self._notifySyncPauseStatus }
 
     assert signals.has_key(type)
 

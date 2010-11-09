@@ -1,7 +1,7 @@
 %define name TsumuFS
 %define version 0.14
 %define unmangled_version 0.14
-%define release 4
+%define release 5
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?python_sitearch: %define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
@@ -18,7 +18,7 @@ Prefix: %{_prefix}
 BuildArch: noarch
 Url: http://tsumufs.googlecode.com/
 BuildRequires: python intltool python-devel fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra
-Requires: python pyxattr fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra python-magic
+Requires: python pyxattr fuse-python pynfs notify-python pygobject2 dbus-python python-distutils-extra python-magic couchdb python-ufo
 
 
 %description
@@ -36,7 +36,7 @@ python setup.py build
 
 %install
 python setup.py install --root=$RPM_BUILD_ROOT
-install -D -m 755 tsumufs-applet.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/tsumufs-applet.desktop
+#install -D -m 755 tsumufs-applet.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/tsumufs-applet.desktop
 
 
 %post
@@ -68,12 +68,20 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man1/mount.tsumufs.1.gz
 %{_mandir}/man1/tsumufs.1.gz
 %{_datadir}/tsumufs/icons/
-%{_sysconfdir}/xdg/autostart/tsumufs-applet.desktop
-%{_datadir}/applications/tsumufs-applet.desktop
+#%{_sysconfdir}/xdg/autostart/tsumufs-applet.desktop
+#%{_datadir}/applications/tsumufs-applet.desktop
 %{_datadir}/locale/fr/LC_MESSAGES/tsumufs.mo
 
 
 %changelog
+* Wed Aug 25 2010 Kevin Pouget <pouget@agorabox.org> - 0.14-5
+Fixed check access to directories by implemented 'openddir' fuse system call
+Added primitive support for sqlite-based cache representation
+Implemented filesystem views architecture based on sql queries
+Implemented 'sorted by type' view
+Implemented 'buddy shares' view
+Removed install of the applet as autostart application
+
 * Wed Jan 20 2010 Sylvain Baubeau <sylvain.baubeau@agorabox.org> - 0.14-4
 Added internationalization support.
 

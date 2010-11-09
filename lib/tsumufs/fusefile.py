@@ -47,11 +47,13 @@ class FuseFile(tsumufs.Debuggable):
   _pid       = None
   _isNewFile = None
 
+  _isSyncPauser = False
+
   @benchmark
   def __init__(self, path, flags, mode=None, uid=None, gid=None, pid=None):
     # Restore the real file path if the file has been acceded via
     # a view virtual folder.
-    if tsumufs.viewsManager.isLoadedViewPath(path):
+    if tsumufs.viewsManager.isAnyViewPath(path):
       path = tsumufs.viewsManager.realFilePath(path)
 
     self._path  = path
@@ -85,6 +87,12 @@ class FuseFile(tsumufs.Debuggable):
     if self._fdFlags & (os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_APPEND):
       access_mode |= os.W_OK
 
+      # Pause the synchronization thread while this thread
+      # is copying the file to the cache to preserve performance.
+      if not tsumufs.syncPause.isSet():
+        tsumufs.syncPause.set()
+        self._isSyncPauser = True
+
     if self._fdFlags & os.O_RDONLY:
       access_mode |= os.R_OK
 
@@ -102,23 +110,8 @@ class FuseFile(tsumufs.Debuggable):
     tsumufs.cacheManager.fakeOpen(path, self._fdFlags, self._fdMode,
                                   self._uid, self._gid)
 
-    # Should be done after O_CREAT job ??
-    #if self._fdFlags & os.O_TRUNC:
-    #  self.ftruncate(0)
+    self._isNewFile = self._fdFlags & os.O_CREAT
 
-    # If we were a new file, create a new change in the synclog for the new file
-    # entry.
-    if self._fdFlags & os.O_CREAT:
-      self._debug('Adding permissions to the PermissionsOverlay.')
-      tsumufs.permsOverlay.setPerms(self._path, self._uid, self._gid,
-                                    self._fdMode)
-
-      self._debug('Adding a new change to the log as user wanted O_CREAT')
-      tsumufs.syncLog.addNew('file', filename=self._path)
-
-      self._isNewFile = True
-
-    # Is it better here ??
     if self._fdFlags & os.O_TRUNC:
       self.ftruncate(0)
 
@@ -172,15 +165,8 @@ class FuseFile(tsumufs.Debuggable):
 
     fspath = tsumufs.fsPathOf(self._path)
     statgoo = tsumufs.cacheManager.statFile(self._path)
-    try:
-      inode = tsumufs.NameToInodeMap.nameToInode(fspath)
-    except KeyError, e:
-      try:
-        inode = statgoo.st_ino
-      except (IOError, OSError), e:
-        inode = -1
 
-    if not tsumufs.syncLog.isNewFile(self._path):
+    if not self._isNewFile:
       self._debug('Reading offset %d, length %d from %s.'
                   % (offset, len(new_data), self._path))
       old_data = tsumufs.cacheManager.readFile(self._path,
@@ -200,21 +186,21 @@ class FuseFile(tsumufs.Debuggable):
                     % (len(new_data) - len(old_data)))
         old_data += '\x00' * (len(new_data) - len(old_data))
 
-      self._debug('Adding change to synclog [ %s | %d | %d | %d | %s ]'
-                  % (self._path, inode, offset, offset+len(new_data),
-                     repr(old_data)))
-
-      tsumufs.syncLog.addChange(self._path,
-                                inode,
-                                offset,
-                                offset+len(new_data),
-                                old_data)
     else:
       self._debug('We\'re a new file -- not adding a change record to log.')
 
     try:
-      tsumufs.cacheManager.writeFile(self._path, offset, new_data,
-                                     self._fdFlags, self._fdMode)
+      if tsumufs.cacheManager.writeFile(self._path, offset, new_data,
+                                        self._fdFlags, self._fdMode):
+        if not self._isNewFile:
+          self._debug('Adding change to synclog [ %s | %d | %d | %s ]'
+                % (self._path, offset, offset+len(new_data), repr(old_data)))
+
+          tsumufs.syncLog.addChange(self._path,
+                                    offset,
+                                    offset+len(new_data),
+                                    old_data)
+
       self._debug('Wrote %d bytes to cache.' % len(new_data))
 
       return len(new_data)
@@ -233,7 +219,15 @@ class FuseFile(tsumufs.Debuggable):
   def release(self, flags):
     self._debug('opcode: release | flags: %s' % flags)
 
-    # Noop since on fs close doesn't do much
+    tsumufs.cacheManager.releaseFile(self._path)
+
+    if self._isNewFile:
+      self._debug('Adding a new change to the log as it\'s a new file')
+      tsumufs.syncLog.addNew('file', filename=self._path)
+
+    if self._isSyncPauser:
+      tsumufs.syncPause.clear()
+
     return 0
 
   @benchmark
@@ -269,41 +263,20 @@ class FuseFile(tsumufs.Debuggable):
     try:
       statgoo = tsumufs.cacheManager.statFile(self._path)
 
-      # Get inode number
-      try:
-        inum = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(self._path))
-      except KeyError, e:
-        try:
-          inum = statgoo.st_ino
-        except (IOError, OSError), e:
-          inum = -1
+      if size != statgoo.st_size:
+        # Truncate the file...
+        if tsumufs.cacheManager.truncateFile(self._path, size):
+          # ... and add the truncated data to the synclog if this is an old file
+          if not self._isNewFile:
+            if size < statgoo.st_size:
+              data = tsumufs.cacheManager.readFile(self._path, size,
+                                                   (statgoo.st_size - size),
+                                                   os.O_RDONLY)
+              tsumufs.syncLog.addChange(self._path, size, statgoo.st_size, data)
+            elif size > statgoo.st_size:
+              tsumufs.syncLog.addChange(self._path, statgoo.st_size, size,
+                                        '\x00' * (size - statgoo.st_size))
 
-      except Exception, e:
-        exc_info = sys.exc_info()
-
-        self._debug('*** Unhandled exception occurred')
-        self._debug('***     Type: %s' % str(exc_info[0]))
-        self._debug('***    Value: %s' % str(exc_info[1]))
-        self._debug('*** Traceback:')
-
-        for line in traceback.extract_tb(exc_info[2]):
-          self._debug('***    %s(%d) in %s: %s' % line)
-
-      # Add the truncated data to the synclog if this is an old file...
-      if not tsumufs.syncLog.isNewFile(self._path):
-        if size < statgoo.st_size:
-          data = tsumufs.cacheManager.readFile(self._path, size,
-                                               (statgoo.st_size - size),
-                                               os.O_RDONLY)
-          tsumufs.syncLog.addChange(self._path, inum, size, statgoo.st_size, data)
-        elif size > statgoo.st_size:
-          tsumufs.syncLog.addChange(self._path, inum, statgoo.st_size, size,
-                                    '\x00' * (size - statgoo.st_size))
-        else:
-          return 0
-
-      # ...and truncate the file
-      tsumufs.cacheManager.truncateFile(self._path, size)
       return 0
 
     except OSError, e:

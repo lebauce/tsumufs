@@ -17,40 +17,28 @@
 '''TsumuFS, a NFS-based caching filesystem.'''
 
 import os
-import errno
-import sys
-import stat
-import syslog
-import thread
-import threading
-import dataregion
-
-from socket import *
 
 import tsumufs
 
-class SSHFSBackendError(Exception):
+
+class SAMBAMountError(Exception):
   pass
 
-class SSHFSBackend(tsumufs.Debuggable, tsumufs.FSBackend):
+
+class SAMBAMount(tsumufs.FSMount):
 
   def __init__(self):
-    self.server_ip = tsumufs.mountSource.slit(":")[0]
-    self.server_port = 22
-    tsumufs.FSBackend.__init__(self)
+    tsumufs.FSMount.__init__(self)
 
   def pingServerOK(self):
     '''
-    Method to verify that the SSHFS server is available.
+    Method to verify that the SAMBA server is available.
     '''
-    try:
-      PySocket = socket (AF_INET,SOCK_DGRAM)
-      PySocket.connect ((self.server_ip, self.server_port))
-    except socket.error, e:
-        PySocket.close()
-        return False
+    retval=os.system("/usr/bin/smbclient -L //192.168.1.13/haksan")
+    if retval == 0:
+      return True
+    else:
+      return False
 
-    PySocket.close()
-    return True
-        
+    
 

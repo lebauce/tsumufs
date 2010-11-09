@@ -46,10 +46,11 @@ class MutableStat(object):
   _keys = [ 'st_mode', 'st_ino', 'st_dev', 'st_nlink', 'st_uid', 'st_gid',
             'st_size', 'st_atime', 'st_mtime', 'st_ctime' ]
 
-  def __init__(self, stat_result):
-    for key in dir(stat_result):
-      if not key.startswith('_'):
-        self.__dict__[key] = stat_result.__getattribute__(key)
+  def __init__(self, stat_result=None):
+    if stat_result:
+      for key in dir(stat_result):
+        if not key.startswith('_'):
+          self.__dict__[key] = stat_result.__getattribute__(key)
 
   def __getitem__(self, idx):
     key = self._keys[idx]

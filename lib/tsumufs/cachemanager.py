@@ -33,25 +33,12 @@ import tsumufs
 from extendedattributes import extendedattribute
 from metrics import benchmark
 
+
 class CacheManager(tsumufs.Debuggable):
   '''
   Class designed to handle management of the cache. All caching
   operations (and decaching operations) are performed here.
   '''
-
-  _statTimeout = 60        # The number of seconds we use the cached
-                           # copy's stat information for before we
-                           # attempt to update it from the fs mount.  This is
-                           # altered by fuzzing the value plus/minus 10
-                           # seconds, to help reduce entire directory stat
-                           # timeouts.
-
-  _cachedStats = {}        # A hash of paths to stat entries and last stat
-                           # times.  This is used to reduce the number of stats
-                           # called on fs primarily.
-
-  _cachedDirents = {}      # A hash of paths to unix timestamps of
-                           # when we last cached the file.
 
   _fileLocks = {}          # A hash of paths to locks to serialize
                            # access to files in the cache.
@@ -97,87 +84,7 @@ class CacheManager(tsumufs.Debuggable):
         raise e
 
   @benchmark
-  def _cacheStat(self, realpath):
-    '''
-    Stat a file, or return the cached stat of that file.
-
-    This method functions nearly exactly the same as os.lstat(), except it
-    returns a cached copy if the last time we cached the stat wasn't longer than
-    the _statTimeout set above.
-
-    Returns:
-      posix.stat_result
-
-    Raises:
-      OSError if there was a problem reading the stat.
-    '''
-
-    recache = False
-
-    if not self._cachedStats.has_key(realpath):
-      self._debug('Stat never cached.')
-      recache = True
-
-    elif (time.time() - self._cachedStats[realpath]['time']
-          > self._statTimeout):
-      self._debug('Stat cache timeout.')
-      recache = True
-
-    else:
-      self._debug('Using cached stat.')
-
-
-    if recache:
-      self._debug('Caching stat. (%s)' % realpath)
-
-      # TODO(jtg): detect mount failures here
-      stat_result = os.lstat(realpath)
-      #stat_result.st_blksize = 32 * 1024
-
-      self._cachedStats[realpath] = {
-        'stat': stat_result,
-        'time': time.time() + (random.random() * 20 - 10)
-        }
-
-    return self._cachedStats[realpath]['stat']
-
-  @benchmark
-  def _invalidateStatCache(self, realpath):
-    '''
-    Unconditionally invalidate the cached stat of a file.
-
-    Returns:
-      None
-
-    Raises:
-      Nothing
-    '''
-
-    if self._cachedStats.has_key(realpath):
-      del self._cachedStats[realpath]
-
-  @benchmark
-  def _invalidateDirentCache(self, dirname, basename):
-    '''
-    Unconditionally invalidate a dirent for a file.
-
-    Returns:
-      None
-
-    Raises:
-      Nothing
-    '''
-
-    if self._cachedDirents.has_key(dirname):
-      if basename in self._cachedDirents[dirname]:
-        self._debug('Removing %s from the dirent cache.' %
-                    os.path.join(dirname, basename))
-
-        while basename in self._cachedDirents[dirname]:
-          self._cachedDirents[dirname].remove(basename)
-
-  @benchmark
-  def _checkForfsDisconnect(self, exception, opcodes):
+  def _checkForFSDisconnect(self, exception, opcodes):
     '''
     '''
 
@@ -187,7 +94,7 @@ class CacheManager(tsumufs.Debuggable):
                      'mode.') %
                     errno.errorcode[exception.errno])
 
-        tsumufs.fsBackend.unmount()
+        tsumufs.fsMount.unmount()
         tsumufs.fsAvailable.clear()
 
   @benchmark
@@ -211,43 +118,15 @@ class CacheManager(tsumufs.Debuggable):
       self._debug(' Opcodes are: %s' % str(opcodes))
 
       self._validateCache(fusepath, opcodes)
-      realpath = self._generatePath(fusepath, opcodes)
 
       if 'enoent' in opcodes:
         raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
 
-      try:
-        self._debug('Statting %s' % realpath)
+      self._debug('Stating %s' % fusepath)
+      stats = tsumufs.fsOverlay.stat(fusepath)
 
-        if 'use-fs' in opcodes:
-          result = self._cacheStat(realpath)
-          tsumufs.NameToInodeMap.setNameToInode(realpath, result.st_ino)
-
-          return result
-
-        else:
-          try:
-            perms = tsumufs.permsOverlay.getPerms(fusepath)
-
-          except KeyError, e:
-            # TODO(pouget): Be sure we can remove this
-            self._debug('Existing file on disk but not in permission overlay. ' +
-                        'This should never happen !!!.')
-            cachestat = os.lstat(realpath)
-            tsumufs.permsOverlay.setPerms(fusepath, 
-                                          cachestat.st_uid,
-                                          cachestat.st_gid,
-                                          cachestat.st_mode)
-            perms = tsumufs.permsOverlay.getPerms(fusepath)
-
-          perms = perms.overlayStatFromFile(realpath)
-          self._debug('Returning %s as perms.' % repr(perms))
-
-          return perms
-
-      except OSError, e:
-        self._checkForfsDisconnect(e, opcodes)
-        raise
+      self._debug('Returning %s as stats.' % repr(stats))
+      return stats
 
     finally:
       self.unlockFile(fusepath)
@@ -289,7 +168,7 @@ class CacheManager(tsumufs.Debuggable):
 
       if flags & os.O_CREAT:
         if 'enoent' in opcodes:
-          self._debug('O_CREAT and enoent in opcodes. Mogrifying.')
+          self._debug('O_CREAT and enoent in opcodes. Modifying.')
           opcodes.remove('enoent')
           if 'use-fs' in opcodes:
             opcodes.remove('use-fs')
@@ -309,45 +188,24 @@ class CacheManager(tsumufs.Debuggable):
           self._debug('Couldn\'t find %s -- raising ENOENT' % fusepath)
           raise
 
-      realpath = self._generatePath(fusepath, opcodes)
-      self._debug('Attempting open of %s.' % realpath)
-
-      if 'use-cache' in opcodes:
-        self._debug('Told to use the cache.')
-
-        if flags & os.O_CREAT:
-          dirname = os.path.dirname(fusepath)
-          basename = os.path.basename(fusepath)
-
-          if self._cachedDirents.has_key(dirname):
-            if not basename in self._cachedDirents[dirname]:
-              self._debug('Inserting new file into the cached dirents for the '
-                          'parent directory.')
-              self._cachedDirents[dirname].append(basename)
-
-          # TODO(jtg): Add in the new permissions into the overlay
-
-        if flags & os.O_TRUNC:
-          # Invalidate the stat cache if one exists.
-          self._debug('Invalidating stat cache')
-          self._invalidateStatCache(realpath)
+      self._debug('Attempting open of %s.' % fusepath)
 
       try:
         self._debug('Opening file')
         if mode:
-          fd = os.open(realpath, flags, tsumufs.defaultCacheMode)
+          fp = tsumufs.fsOverlay.open(fusepath, flags, uid, gid,
+                                      tsumufs.defaultCacheMode | stat.S_IFREG,
+                                      usefs=('use-fs' in opcodes))
         else:
-          fd = os.open(realpath, flags)
-
-        # TODO(jtg): Store permissions here
-        self._debug('Storing new permissions')
+          fp = tsumufs.fsOverlay.open(fusepath, flags, uid, gid, None,
+                                      usefs=('use-fs' in opcodes))
 
       except OSError, e:
-        self._checkForfsDisconnect(e, opcodes)
+        self._checkForFSDisconnect(e, opcodes)
         raise
 
       self._debug('Closing file.')
-      os.close(fd)
+      fp.close(release=False)
 
     finally:
       self._debug('Unlocking file.')
@@ -369,30 +227,13 @@ class CacheManager(tsumufs.Debuggable):
       if 'enoent' in opcodes:
         raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
 
-      if tsumufs.fsAvailable.isSet() and self._cachedDirents.has_key(fusepath):
-        self._debug('fs is available -- combined dirents from fs and '
-                    'cached disk.')
+      for doc in tsumufs.fsOverlay.listdir(fusepath):
+        # If fs not available and file not cached to disk, do not display it
+        if (not tsumufs.fsAvailable.isSet()
+            and not self.isCachedToDisk(os.path.join(fusepath, doc.filename))):
+          continue
 
-        fs_dirents = set(self._cachedDirents[fusepath])
-        cached_dirents = set(os.listdir(tsumufs.cachePathOf(fusepath)))
-        final_dirents_list = [ '.', '..' ]
-
-        for dirent in fs_dirents.union(cached_dirents):
-          final_dirents_list.append(dirent)
-
-        self._debug('fs_dirents = %s' % fs_dirents);
-        self._debug('cached_dirents = %s' % cached_dirents);
-        self._debug('final_dirents_list = %s' % final_dirents_list);
-
-        return final_dirents_list
-
-      else:
-        self._debug('fs is unavailable -- returning cached disk dir stuff.')
-
-        dirents = [ '.', '..' ]
-        dirents.extend(os.listdir(tsumufs.cachePathOf(fusepath)))
-
-        return dirents
+        yield doc
 
     finally:
       self.unlockFile(fusepath)
@@ -419,6 +260,22 @@ class CacheManager(tsumufs.Debuggable):
       result = 'r'
 
     return result
+
+  @benchmark
+  def releaseFile(self, fusepath):
+    try:
+      self.lockFile(fusepath)
+
+      opcodes = self._genCacheOpcodes(fusepath)
+
+      # Open a file in write mode and close it to raise
+      # the update of the stats in the database.
+      tsumufs.fsOverlay.open(fusepath, os.O_RDWR,
+                             usefs=('use-fs' in opcodes)).close()
+
+      return ('use-fs' not in opcodes)
+    finally:
+      self.unlockFile(fusepath)
 
   @benchmark
   def readFile(self, fusepath, offset, length, flags, mode=None):
@@ -450,23 +307,19 @@ class CacheManager(tsumufs.Debuggable):
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
-      realpath = self._generatePath(fusepath, opcodes)
 
       self._debug('Reading file contents from %s [ofs: %d, len: %d]'
-                  % (realpath, offset, length))
+                  % (fusepath, offset, length))
 
       # TODO(jtg): Validate permissions here
 
-      if mode != None:
-        fd = os.open(realpath, flags, mode)
-      else:
-        fd = os.open(realpath, flags)
+      fp = tsumufs.fsOverlay.open(fusepath, flags, mode=mode,
+                                  usefs=('use-fs' in opcodes))
 
-      fp = os.fdopen(fd, self._flagsToStdioMode(flags))
       fp.seek(0)
       fp.seek(offset)
       result = fp.read(length)
-      fp.close()
+      fp.close(release=False)
 
       self._debug('Read %s' % repr(result))
       return result
@@ -502,32 +355,51 @@ class CacheManager(tsumufs.Debuggable):
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
-      realpath = tsumufs.cachePathOf(fusepath)
 
       self._debug('Writing to file %s at offset %d with buffer length of %d '
-                  'and mode %s' % (realpath, offset, len(buf), mode))
+                  'and mode %s' % (fusepath, offset, len(buf), mode))
 
       # TODO(jtg): Validate permissions here, too
 
-      if mode != None:
-        fd = os.open(realpath, flags, mode)
-      else:
-        fd = os.open(realpath, flags)
-
-      fp = os.fdopen(fd, self._flagsToStdioMode(flags))
+      fp = tsumufs.fsOverlay.open(fusepath, flags, mode=mode,
+                                  usefs=('use-fs' in opcodes))
 
       if offset >= 0:
         fp.seek(offset)
       else:
         fp.seek(0, 2)
 
-      bytes_written = fp.write(buf)
-      fp.close()
+      fp.write(buf)
+      fp.close(release=False)
 
-      # Since we wrote to the file, invalidate the stat cache if it exists.
-      self._invalidateStatCache(realpath)
+      return ('use-fs' not in opcodes)
 
-      return bytes_written
+    finally:
+      self.unlockFile(fusepath)
+
+  @benchmark
+  def truncateFile(self, fusepath, size):
+    '''
+    Unconditionally truncate the file. Don't check to see if the user has
+    access.
+    '''
+
+    try:
+      self.lockFile(fusepath)
+
+      opcodes = self._genCacheOpcodes(fusepath)
+      self._validateCache(fusepath, opcodes)
+
+      self._debug('Truncating %s to %d bytes.' % (fusepath, size))
+
+      fp = tsumufs.fsOverlay.open(fusepath, os.O_RDWR,
+                                  usefs=('use-fs' in opcodes))
+
+      fp.truncate(size)
+      fp.close(release=False)
+
+      return ('use-fs' not in opcodes)
+
     finally:
       self.unlockFile(fusepath)
 
@@ -574,30 +446,14 @@ class CacheManager(tsumufs.Debuggable):
         if e.errno != errno.ENOENT:
           raise
 
-      realpath = self._generatePath(fusepath, opcodes)
-      dirname = os.path.dirname(fusepath)
-      basename = os.path.basename(fusepath)
+      tsumufs.fsOverlay.symlink(target, fusepath, usefs=('use-fs' in opcodes))
 
-      if 'use-cache' in opcodes:
-        if self._cachedDirents.has_key(dirname):
-          self._cachedDirents[dirname].append(basename)
-
-      self._invalidateStatCache(realpath)
-
-      res = os.symlink(target, realpath)
-
-      lstat = os.lstat(realpath)
-      tsumufs.permsOverlay.setPerms(fusepath, 
-                                    lstat.st_uid,
-                                    lstat.st_gid,
-                                    lstat.st_mode)
-      return res
-
+      return ('use-fs' not in opcodes)
     finally:
       self.unlockFile(fusepath)
 
   @benchmark
-  def makeDir(self, fusepath):
+  def makeDir(self, fusepath, mode):
     self.lockFile(fusepath)
 
     try:
@@ -610,19 +466,23 @@ class CacheManager(tsumufs.Debuggable):
         if e.errno != errno.ENOENT:
           raise
 
-      realpath = tsumufs.cachePathOf(fusepath)
-      dirname  = os.path.dirname(fusepath)
-      basename = os.path.basename(fusepath)
+      self._debug("Making directory %s" % fusepath)
 
-      if 'use-cache' in opcodes:
-        if self._cachedDirents.has_key(dirname):
-          self._cachedDirents[dirname].append(basename)
+      tsumufs.fsOverlay.mkdir(fusepath, mode, usefs=('use-fs' in opcodes))
 
-      self._cachedDirents[fusepath] = []
-      self._invalidateStatCache(realpath)
+      return ('use-fs' not in opcodes)
+    finally:
+      self.unlockFile(fusepath)
 
-      self._debug("Making directory %s" % realpath)
-      return os.mkdir(realpath, 0755)
+  @benchmark
+  def makeNode(self, fusepath, mode, dev):
+    self.lockFile(fusepath)
+
+    try:
+      opcodes = self._genCacheOpcodes(fusepath)
+
+      # TODO: implement this !
+      return ('use-fs' not in opcodes)
 
     finally:
       self.unlockFile(fusepath)
@@ -645,20 +505,10 @@ class CacheManager(tsumufs.Debuggable):
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
-      realpath = self._generatePath(fusepath, opcodes)
 
-      try:
-        perms = tsumufs.permsOverlay.getPerms(fusepath)
-      except KeyError:
-        statgoo = self.statFile(fusepath)
-        perms = { 'uid': statgoo.st_uid,
-                  'gid': statgoo.st_gid,
-                  'mode': statgoo.st_mode }
+      tsumufs.fsOverlay.chmod(fusepath, mode, usefs=('use-fs' in opcodes))
 
-      perms.mode = (perms.mode & 070000) | mode
-      tsumufs.permsOverlay.setPerms(fusepath, perms.uid, perms.gid, perms.mode)
-
-      self._invalidateStatCache(tsumufs.fsPathOf(fusepath))
+      return ('use-fs' not in opcodes)
     finally:
       self.unlockFile(fusepath)
 
@@ -680,19 +530,10 @@ class CacheManager(tsumufs.Debuggable):
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
-      realpath = self._generatePath(fusepath, opcodes)
 
-      try:
-        perms = tsumufs.permsOverlay.getPerms(fusepath)
-      except KeyError:
-        statgoo = self.statFile(fusepath)
-        perms = { 'uid': statgoo.st_uid,
-                  'gid': statgoo.st_gid,
-                  'mode': statgoo.st_mode }
+      tsumufs.fsOverlay.chown(fusepath, uid, gid, usefs=('use-fs' in opcodes))
 
-      tsumufs.permsOverlay.setPerms(fusepath, uid, gid, perms.mode)
-
-      self._invalidateStatCache(tsumufs.fsPathOf(fusepath))      
+      return ('use-fs' not in opcodes)
     finally:
       self.unlockFile(fusepath)
 
@@ -714,9 +555,10 @@ class CacheManager(tsumufs.Debuggable):
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
-      cachepath = self._generatePath(fusepath, opcodes)
 
-      return os.utime(cachepath, times)
+      tsumufs.fsOverlay.utime(fusepath, times, usefs=('use-fs' in opcodes))
+
+      return ('use-fs' not in opcodes)
     finally:
       self.unlockFile(fusepath)
 
@@ -731,51 +573,43 @@ class CacheManager(tsumufs.Debuggable):
     Raises:
       OSError, IOError
     '''
-    
+
+    # TODO:
+    # If some files are located in the subtree of this directory,
+    # lock the path to avoid access to this files while the directory
+    # is being renamed.
+
     self.lockFile(fusepath)
     self.lockFile(newpath)
 
     try:
       srcopcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, srcopcodes)
-      
-      try:  
+
+      try:
         destopcodes = self._genCacheOpcodes(newpath)
-        self._validateCache(newpath, destopcodes)  
-        destpath = self._generatePath(newpath, destopcodes)
+        self._validateCache(newpath, destopcodes)
       except OSError, e:
-        if e.errno == errno.ENOENT:
-          # In this case, destpath is not create yet.
-          destpath = tsumufs.cachePathOf(newpath)
-        else:
+        if e.errno != errno.ENOENT:
+          # In case of ENOENT, destpath is not create yet.
           raise
 
-      srcpath = self._generatePath(fusepath, srcopcodes)
+      self._debug('Renaming %s -> %s ' % (fusepath, newpath))
 
-      self._debug('Renaming %s (%s) -> %s (%s)' % (fusepath, srcpath,
-                                                   newpath, destpath))
-      
-      # Don't need to do anything with the perms, because the inode stays the
-      # same during a rename. We're just passing around the reference between
-      # directory hashes.
-      
-      result = os.rename(srcpath, destpath)
+      # TODO:
+      # In the 'rename' case, we probably should check src and dest
+      # opcodes to raise a specific behavior on the synclog if both
+      # src and dest paths have not same caching policy. In this case,
+      # the following call to the fsOverlay probably will not work.
+      usefs = (('use-fs' in srcopcodes) or ('use-fs' in destopcodes))
 
-      # If path is a folder, add a cachedDirents with old path 
-      # cachedDirents contents.
-      if self._cachedDirents.has_key(fusepath):
-        self._cachedDirents[newpath] = self._cachedDirents[fusepath]
+      tsumufs.fsOverlay.rename(fusepath, newpath, usefs=usefs)
 
-      # Invalidate the dirent cache for the old pathname
-      self._invalidateDirentCache(os.path.dirname(fusepath),
-                                  os.path.basename(fusepath))
-      
-      return result
-      
+      return not usefs
     finally:
       self.unlockFile(fusepath)
       self.unlockFile(newpath)
-    
+
   @benchmark
   def access(self, uid, fusepath, mode):
     '''
@@ -796,10 +630,6 @@ class CacheManager(tsumufs.Debuggable):
       self._validateCache(fusepath, opcodes)
       realpath = self._generatePath(fusepath, opcodes)
 
-      if 'use-fs' in opcodes:
-        self._debug('Using fs for access')
-        return os.access(realpath, mode)
-
       # TODO(cleanup): make the above chunk of code into a decorator for crying
       # out loud. We do this in every public method and it adds confusion. =o(
 
@@ -811,9 +641,7 @@ class CacheManager(tsumufs.Debuggable):
       # Recursively go down the path from longest to shortest, checking access
       # perms on each directory as we go down.
       if fusepath != '/':
-        self.access(uid,
-                    os.path.dirname(fusepath),
-                    os.X_OK)
+        self.access(uid, os.path.dirname(fusepath), os.X_OK)
 
       file_stat = self.statFile(fusepath)
 
@@ -862,34 +690,6 @@ class CacheManager(tsumufs.Debuggable):
       self.unlockFile(fusepath)
 
   @benchmark
-  def truncateFile(self, fusepath, size):
-    '''
-    Unconditionally truncate the file. Don't check to see if the user has
-    access.
-    '''
-
-    try:
-      self.lockFile(fusepath)
-
-      opcodes = self._genCacheOpcodes(fusepath)
-      self._validateCache(fusepath, opcodes)
-      realpath = self._generatePath(fusepath, opcodes)
-
-      self._debug('Truncating %s to %d bytes.' % (realpath, size))
-
-      fd = os.open(realpath, os.O_RDWR)
-      os.ftruncate(fd, size)
-      os.close(fd)
-
-      # Since we wrote to the file, invalidate the stat cache if it exists.
-      self._invalidateStatCache(realpath)
-
-      return 0
-
-    finally:
-      self.unlockFile(fusepath)
-
-  @benchmark
   def _cacheDir(self, fusepath):
     '''
     Cache the directory referenced by path.
@@ -910,7 +710,6 @@ class CacheManager(tsumufs.Debuggable):
     try:
       fspath    = tsumufs.fsPathOf(fusepath)
       cachepath = tsumufs.cachePathOf(fusepath)
-      curstat   = os.lstat(fspath)
 
       self._debug('fspath = %s' % fspath)
       self._debug('cachepath = %s' % cachepath)
@@ -918,6 +717,7 @@ class CacheManager(tsumufs.Debuggable):
       if fusepath == '/':
         self._debug('Asking to cache root -- skipping the cache to '
                     'disk operation, but caching data in memory.')
+
       else:
         try:
           os.mkdir(cachepath)
@@ -929,19 +729,22 @@ class CacheManager(tsumufs.Debuggable):
           if e.errno != errno.EEXIST:
             raise
 
-        shutil.copystat(fspath, cachepath)
+      # If activated, populating database will compare the filesystem dirents
+      # to the database dirents, and add to database any files that could be
+      # created bypassing the CouchedFilesystem api, directly on the filesystem.
+      # The performance overhead raised by this operation increase when the number
+      # of file to add to database is higher.
+      if tsumufs.populateDb:
+        try:
+          self._debug('Discovering directory %s contents and populate database.' % fusepath)
+          dirents = [ doc.filename for doc in tsumufs.fsOverlay.listdir(fusepath) ]
 
-        tsumufs.permsOverlay.setPerms(fusepath,
-                                      curstat.st_uid,
-                                      curstat.st_gid,
-                                      curstat.st_mode)
+          for filename in os.listdir(fspath):
+            if filename not in dirents:
+              tsumufs.fsOverlay.populate(os.path.join(fusepath, filename))
 
-      self._debug('Caching directory %s to disk.' % fusepath)
-      try:
-        self._cachedDirents[fusepath] = os.listdir(fspath)
-      except OSError, e:
-        self._debug('Cannot list directory %s (%s)' % (fusepath, e.strerror))
-        self._cachedDirents[fusepath] = []
+        except OSError, e:
+          self._debug('Cannot list directory %s (%s)' % (fusepath, e.strerror))
 
     finally:
       self.unlockFile(fusepath)
@@ -976,29 +779,28 @@ class CacheManager(tsumufs.Debuggable):
     self.lockFile(fusepath)
 
     try:
-      self._debug('Caching file %s to disk.' % fusepath)
-
       fspath = tsumufs.fsPathOf(fusepath)
       cachepath = tsumufs.cachePathOf(fusepath)
 
-      curstat = os.lstat(fspath)
+      document = tsumufs.fsOverlay[fusepath]
 
-      if stat.S_ISDIR(curstat.st_mode):
+      if stat.S_ISDIR(document.mode):
         # Caching a directory to disk -- call cacheDir instead.
         self._debug('Request to cache a directory -- calling _cacheDir')
         self._cacheDir(fusepath)
 
       else:
-        if (stat.S_ISREG(curstat.st_mode) or
-            stat.S_ISFIFO(curstat.st_mode) or
-            stat.S_ISSOCK(curstat.st_mode) or
-            stat.S_ISCHR(curstat.st_mode) or
-            stat.S_ISBLK(curstat.st_mode)):
+        self._debug('Caching file %s to disk.' % fusepath)
+
+        if (stat.S_ISREG(document.mode)  or
+            stat.S_ISFIFO(document.mode) or
+            stat.S_ISSOCK(document.mode) or
+            stat.S_ISCHR(document.mode)  or
+            stat.S_ISBLK(document.mode)):
 
           shutil.copy(fspath, cachepath)
-          shutil.copystat(fspath, cachepath)
 
-        elif stat.S_ISLNK(curstat.st_mode):
+        elif stat.S_ISLNK(document.mode):
           dest = os.readlink(fspath)
 
           try:
@@ -1011,15 +813,13 @@ class CacheManager(tsumufs.Debuggable):
           #os.lchown(cachepath, curstat.st_uid, curstat.st_gid)
           #os.lutimes(cachepath, (curstat.st_atime, curstat.st_mtime))
 
-        tsumufs.permsOverlay.setPerms(fusepath,
-                                      curstat.st_uid,
-                                      curstat.st_gid,
-                                      curstat.st_mode)
+      tsumufs.fsOverlay.setCachedRevision(document.id, document.rev)
+
     finally:
       self.unlockFile(fusepath)
 
   @benchmark
-  def removeCachedFile(self, fusepath):
+  def removeCachedFile(self, fusepath, removeperm=False):
     '''
     Remove the cached file referenced by fusepath from the cache.
 
@@ -1040,24 +840,38 @@ class CacheManager(tsumufs.Debuggable):
     self.lockFile(fusepath)
 
     try:
-      cachefilename = tsumufs.cachePathOf(fusepath)
-      ino = os.lstat(cachefilename).st_ino
+      opcodes = self._genCacheOpcodes(fusepath)
+      document = tsumufs.fsOverlay[fusepath]
 
-      if os.path.isfile(cachefilename) or os.path.islink(cachefilename):
-        os.unlink(cachefilename)
-      elif os.path.isdir(cachefilename):
-        os.rmdir(cachefilename)
+      if stat.S_ISDIR(document.mode):
+        # Firstly test if the directory is empty on the fs because some
+        # files that it contains could not be cached to disk. Many programs
+        # use to try to remove a directory in order to know if it's required
+        # to primary remove files in this directory. Without this workaround,
+        # the cached copy of the directory will be removed, and the 'rmdir'
+        # system call will fail on the fs directory, when replicated on the
+        # filesystem by the syncThread.
+        try:
+          tsumufs.fsOverlay.listdir(fusepath).next()
+          raise OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY))
 
-      # Invalidate the stat cache for this file
-      self._invalidateStatCache(cachefilename)
+        except StopIteration, e:
+          tsumufs.fsOverlay.rmdir(fusepath,
+                                  remove_db=removeperm,
+                                  usefs=(removeperm and ('use-fs' in opcodes)))
 
-      # Remove this file from the dirent cache if it was put in there.
-      self._invalidateDirentCache(os.path.dirname(fusepath),
-                                  os.path.basename(fusepath))
+      else:
+        tsumufs.fsOverlay.unlink(fusepath,
+                                 remove_db=removeperm,
+                                 usefs=(removeperm and ('use-fs' in opcodes)))
 
-      # Remove this file from the permsOverlay
-      tsumufs.permsOverlay.removePerms(ino)
+      try:
+        tsumufs.fsOverlay.removeCachedRevision(document.id)
+      except KeyError, e:
+        # Document never cached to disk
+        pass
 
+      return ('use-fs' not in opcodes)
     finally:
       self.unlockFile(fusepath)
 
@@ -1084,18 +898,23 @@ class CacheManager(tsumufs.Debuggable):
     path = fusepath
     while path != "/":
       if self._cacheSpec.has_key(path):
-        self._debug('caching of %s is %s because of policy on %s' % (
-                    fusepath, self._cacheSpec[path], path))
+        self._debug('caching of %s is %s because of policy on %s'
+                    % (fusepath, self._cacheSpec[path], path))
         return self._cacheSpec[path]
       # not found explicity, so inherit policy from parent dir
       (path, base) = os.path.split(path)
 
     # return default policy
     self._debug('default caching policy on %s' % fusepath)
-    if tsumufs.syncLog.isUnlinkedFile(fusepath):
-      return False
-    else:
-      return True
+
+    # TODO: Verify that we can remove the following test, because
+    #       it raise a database access not managed by a cache.
+    #
+    # if tsumufs.syncLog.isUnlinkedFile(fusepath):
+    #   return False
+    # else:
+    #   return True
+    return True
 
   @benchmark
   def _validateCache(self, fusepath, opcodes=None):
@@ -1190,6 +1009,9 @@ class CacheManager(tsumufs.Debuggable):
     shouldCache = self._shouldCacheFile(fusepath)
     fsAvail = tsumufs.fsAvailable.isSet()
 
+    self._debug('fusepath %s, isCached %s, shouldCache %s, fsAvail %s'
+                % (fusepath, isCached, shouldCache, fsAvail))
+
     # if not cachedFile and not fsAvailable raise -ENOENT
     if not isCached and not fsAvail:
       self._debug('File not cached, no fs -- enoent')
@@ -1238,11 +1060,12 @@ class CacheManager(tsumufs.Debuggable):
           if tsumufs.syncLog.isFileDirty(fusepath):
             self._debug('Merge conflict detected.')
             return ['merge-conflict', 'use-fs']
-        
+
           else:
-            if for_stat:
-              self._debug('Returning cache-file, use-fs, as this is for stat.')
-              return ['cache-file', 'use-fs']
+#            With the databse, no matter with using fs or cache for getting stats
+#            if for_stat:
+#              self._debug('Returning cache-file, use-fs, as this is for stat.')
+#              return ['cache-file', 'use-fs']
 
             self._debug(('Cached, should cache, fs avail, fs changed, '
                          'cache clean -- recache, use cache'))
@@ -1254,7 +1077,7 @@ class CacheManager(tsumufs.Debuggable):
   @benchmark
   def _fsDataChanged(self, fusepath):
     '''
-    Check to see if the fs data has changed since our last stat.
+    Check to see if the fs data has changed since our last cache of the file.
 
     Returns:
       Boolean true or false.
@@ -1267,17 +1090,15 @@ class CacheManager(tsumufs.Debuggable):
 
     try:
       try:
-        fspath     = tsumufs.fsPathOf(fusepath)
-        realstat   = os.lstat(fspath)
-        cachedstat = self._cachedStats[fspath]['stat']
+        document = tsumufs.fsOverlay[fusepath]
 
-        if ((cachedstat.st_blocks != realstat.st_blocks) or
-            (cachedstat.st_mtime != realstat.st_mtime) or
-            (cachedstat.st_size != realstat.st_size) or
-            (cachedstat.st_ino != realstat.st_ino)):
-          return True
-        else:
-          return False
+        documentrev = document.rev
+        cachedrev   = tsumufs.fsOverlay.getCachedRevision(document.id)
+
+        self._debug('%s, document revision %s, cached revision %s'
+                    % (fusepath, documentrev, cachedrev))
+
+        return cachedrev < documentrev
 
       except OSError, e:
         if e.errno == errno.ENOENT:
@@ -1286,7 +1107,7 @@ class CacheManager(tsumufs.Debuggable):
           raise
 
       except KeyError, e:
-        # Stats never chached
+        # Stats never cached
         return True
 
     finally:
@@ -1303,8 +1124,7 @@ class CacheManager(tsumufs.Debuggable):
     relative to the tsumufs mountpoint root.
 
     Returns:
-      Tuple of boolean: -True if the file is cached. False otherwise.
-                        -True if the file is a local file. False otherwise.
+      Boolean: True if the file is cached. False otherwise.
 
     Raises:
       OSError if there was an issue statting the file in question.
@@ -1315,6 +1135,8 @@ class CacheManager(tsumufs.Debuggable):
 
     try:
       try:
+        # TODO: check the file in the cached revisions,
+        #       instead of stating the fs.
         statgoo = os.lstat(tsumufs.cachePathOf(fusepath))
 
       except OSError, e:
@@ -1411,22 +1233,8 @@ def xattr_isDirty(type_, path, value=None):
     return '1'
   return '0'
 
-@extendedattribute('root', 'tsumufs.cached-dirents')
-def xattr_cachedDirents(type_, path, value=None):
-  if value:
-    return -errno.EOPNOTSUPP
-
-  return repr(tsumufs.cacheManager._cachedDirents)
-
-@extendedattribute('root', 'tsumufs.cached-stats')
-def xattr_cachedStats(type_, path, value=None):
-  if value:
-    return -errno.EOPNOTSUPP
-
-  return repr(tsumufs.cacheManager._cachedStats)
-
 @extendedattribute('any', 'tsumufs.should-cache')
-def xattr_cachedStats(type_, path, value=None):
+def xattr_shouldCache(type_, path, value=None):
 
   if value:
     # set the value

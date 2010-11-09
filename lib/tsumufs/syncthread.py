@@ -66,21 +66,21 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     self._debug('Attempting to mount fs.')
 
     self._debug('Checking for fs server availability')
-    if not tsumufs.fsBackend.pingServerOK():
+    if not tsumufs.fsMount.pingServerOK():
       self._debug('fs ping failed.')
       return False
 
     self._debug('fs ping successful.')
 
     self._debug('Checking if fs is ready.')
-    if tsumufs.fsBackend.fsMountCheckOK():
+    if tsumufs.fsMount.fsMountCheckOK():
       self._debug('fs is already ready.')
       return True
 
     self._debug('Attempting mount.')
 
     try:
-      result = tsumufs.fsBackend.mount()
+      result = tsumufs.fsMount.mount()
     except:
       self._debug('Exception: %s' + traceback.format_exc())
       self._debug('fs mount failed.')
@@ -97,27 +97,30 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       return False
 
   def _propogateNew(self, item, change):
-    fusepath = item.getFilename()
+    fusepath = item.filename
     fspath = tsumufs.fsPathOf(fusepath)
 
     # Horrible hack, but it works to test for the existance of a file.
     try:
-      tsumufs.fsBackend.readFileRegion(fusepath, 0, 0)
+      tsumufs.fsMount.readFileRegion(fusepath, 0, 0)
     except (OSError, IOError), e:
       if e.errno != errno.ENOENT:
         return True
 
-    if item.getFileType() != 'dir':
-      if item.getFileType() == 'symlink':
+    if item.file_type != 'dir':
+      if item.file_type == 'symlink':
         os.symlink(os.readlink(tsumufs.cachePathOf(fusepath)),
                    tsumufs.fsPathOf(fusepath))
       else:
         shutil.copy(tsumufs.cachePathOf(fusepath),
                     tsumufs.fsPathOf(fusepath))
     else:
-      perms = tsumufs.permsOverlay.getPerms(fusepath)
-      os.mkdir(tsumufs.fsPathOf(fusepath), perms.mode)
-      os.chown(tsumufs.fsPathOf(fusepath), perms.uid, perms.gid)
+      document = tsumufs.fsOverlay[fusepath]
+      os.mkdir(tsumufs.fsPathOf(fusepath), document.mode)
+      try:
+        os.chown(tsumufs.fsPathOf(fusepath), document.uid, document.gid)
+      except:
+        pass
 
     return False
 
@@ -128,9 +131,9 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
   def _propogateUnlink(self, item, change):
     # TODO(conflicts): Conflict if the file type or inode have changed
-    fusepath = item.getFilename()
+    fusepath = item.filename
 
-    if item.getFileType() != 'dir':
+    if item.file_type != 'dir':
       os.unlink(tsumufs.fsPathOf(fusepath))
     else:
       os.rmdir(tsumufs.fsPathOf(fusepath))
@@ -159,33 +162,32 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     #   5. Otherwise:
     #      4a. Iterate over each change and write it out to fs.
 
-    fusepath = item.getFilename()
+    fusepath = item.filename
     self._debug('Fuse path is %s' % fusepath)
 
-    fs_stat = os.lstat(tsumufs.fsPathOf(fusepath))
-    cache_stat = os.lstat(tsumufs.cachePathOf(fusepath))
+    document   = tsumufs.fsOverlay[fusepath]
+    cache_stat = document.get_stats()
+    fs_stat    = os.lstat(tsumufs.fsPathOf(fusepath))
 
     self._debug('Validating data hasn\'t changed on fs.')
     if stat.S_IFMT(fs_stat.st_mode) != stat.S_IFMT(cache_stat.st_mode):
       self._debug('File type has completely changed -- conflicted.')
       return True
-    elif item.getFsInum() != None and fs_stat.st_ino != item.getFsInum(): 
-      self._debug('Inode number changed -- conflicted.' % (fs_stat.st_ino, item.getInum()))
-      return True
+
     else:
       # Iterate over each region, and verify the changes
       for region in change.getDataChanges():
-        data = tsumufs.fsBackend.readFileRegion(fusepath,
-                                               region.getStart(),
-                                               region.getEnd()-region.getStart())
+        data = tsumufs.fsMount.readFileRegion(fusepath,
+                                               region.start,
+                                               region.end - region.start)
 
-        if len(data) < region.getEnd() - region.getStart():
-          data += '\x00' * ((region.getEnd() - region.getStart()) - len(data))
+        if len(data) < region.end - region.start:
+          data += '\x00' * ((region.end - region.start) - len(data))
 
-        if region.getData() != data:
+        if region.data != data:
           self._debug('Region has changed -- entire changeset conflicted.')
           self._debug('Data read was %s' % repr(data))
-          self._debug('Wanted %s' % repr(region.getData()))
+          self._debug('Wanted %s' % repr(region.data))
           return True
 
     self._debug('No conflicts detected.')
@@ -193,56 +195,55 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     # Propogate changes
     for region in change.getDataChanges():
       data = tsumufs.cacheManager.readFile(fusepath,
-                                           region.getStart(),
-                                           region.getEnd()-region.getStart(),
+                                           region.start,
+                                           region.end - region.start,
                                            os.O_RDONLY)
 
       # Pad the region with nulls if we get a short read (EOF before the end of
       # the real file. It means we ran into a truncate issue and that the file
       # is shorter than it was originally -- we'll propogate the truncate down
       # the line.
-      if len(data) < region.getEnd() - region.getStart():
-        data += '\x00' * ((region.getEnd() - region.getStart()) - len(data))
+      if len(data) < region.end - region.start:
+        data += '\x00' * ((region.end - region.start) - len(data))
 
       self._debug('Writing to %s at [%d-%d] %s'
-                  % (fusepath, region.getStart(),
-                     region.getEnd(), repr(data)))
+                  % (fusepath, region.start,
+                     region.end, repr(data)))
 
-      tsumufs.fsBackend.writeFileRegion(fusepath,
-                                       region.getStart(),
-                                       region.getEnd(),
+      tsumufs.fsMount.writeFileRegion(fusepath,
+                                       region.start,
+                                       region.end,
                                        data)
 
     # Propogate truncations
     if (cache_stat.st_size < fs_stat.st_size):
-      tsumufs.fsBackend.truncateFile(fusepath, cache_stat.st_size)
+      tsumufs.fsMount.truncateFile(fusepath, cache_stat.st_size)
 
     # Propogate metadatas
     modechange, uidchange, gidchange, timeschange = change.getMetaDataChanges()
     if modechange:
-      os.chmod(tsumufs.fsPathOf(fusepath), modechange)
+      os.chmod(tsumufs.fsPathOf(fusepath), document.mode)
     if timeschange:
-      os.utime(tsumufs.fsPathOf(fusepath), timeschange)
+      os.utime(tsumufs.fsPathOf(fusepath), (cache_stat.st_atime, cache_stat.st_mtime))
     if uidchange and gidchange:
-      os.chown(tsumufs.fsPathOf(fusepath), uidchange, gidchange)
+      os.chown(tsumufs.fsPathOf(fusepath), document.uid, document.gid)
+
     return False
 
   def _propogateRename(self, item, change):
     # TODO(conflicts): Verify inode numbers here
-    oldfusepath = item.getOldFilename()
-    newfusepath = item.getNewFilename()
-    os.rename(tsumufs.fsPathOf(item.getOldFilename()),
-              tsumufs.fsPathOf(item.getNewFilename()))
+    os.rename(tsumufs.fsPathOf(item.old_fname),
+              tsumufs.fsPathOf(item.new_fname))
 
     return False
 
   def _writeChangeSet(self, item, change):
     # TODO(refactor): Make SyncItem generate the patch set string instead.
 
-    if item.getType() != 'rename':
-      fusepath = item.getFilename()
+    if item.type != 'rename':
+      fusepath = item.filename
     else:
-      fusepath = item.getOldFilename()
+      fusepath = item.old_fname
 
     if fusepath[0] == '/':
       conflictpath = fusepath[1:]
@@ -292,13 +293,13 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
                                      { 'timestamp': time.time() },
                                      os.O_APPEND|os.O_RDWR)
 
-      if item.getType() == 'new':
+      if item.type == 'new':
         # TODO(conflicts): Write the entire file to the changeset as one large
         # patch.
         self._debug('New file -- don\'t know what to do -- skipping.')
         pass
 
-      if item.getType() == 'change':
+      if item.type == 'change':
         # TODO(conflicts): Propogate metadata changes as well.
         # TODO(conflicts): Propogate truncates!
 
@@ -306,28 +307,28 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         self._debug('Writing changes to conflict file.')
         for region in change.getDataChanges():
           data = tsumufs.cacheManager.readFile(fusepath,
-                                               region.getStart(),
-                                               region.getEnd()-region.getStart(),
+                                               region.start,
+                                               region.end - region.start,
                                                os.O_RDONLY)
           tsumufs.cacheManager.writeFile(conflictpath, -1,
                                          'set.addChange(type_="patch", start=%d, end=%d, data=%s)' %
-                                         (region.getStart(), region.getEnd(), repr(data)),
+                                         (region.start, region.end, repr(data)),
                                          os.O_APPEND|os.O_RDWR)
 
-      if item.getType() == 'link':
+      if item.type == 'link':
         # TODO(conflicts): Implement links.
         self._debug('Link file -- don\'t know what to do -- skipping.')
         pass
 
-      if item.getType() == 'unlink':
+      if item.type == 'unlink':
         fp.write('set.addUnlink()')
 
-      if item.getType() == 'symlink':
+      if item.type == 'symlink':
         # TODO(conflicts): Implement symlinks.
         self._debug('Symlink file -- don\'t know what to do -- skipping.')
         pass
 
-      if item.getType() == 'rename':
+      if item.type == 'rename':
         self._debug('Rename file -- don\'t know what to do -- skipping.')
         pass
 
@@ -345,15 +346,14 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         self._debug('Conflictfile was new -- adding to synclog.')
         tsumufs.syncLog.addNew('file', filename=conflictpath)
 
-        perms = tsumufs.cacheManager.statFile(fusepath)
-        tsumufs.permsOverlay.setPerms(conflictpath, perms.st_uid, perms.st_gid,
-                                      0700 | stat.S_IFREG)
-        self._debug('Setting permissions to (%d, %d, %o)' % (perms.st_uid,
-                                                             perms.st_gid,
-                                                             0700 | stat.S_IFREG))
+#        document = tsumufs.cacheManager.statFile(fusepath)
+#        tsumufs.fsOverlay.open(conflictpath, create=True,
+#                               uid=document.uid, gid=document.gid, 
+#                               mode=0700 | stat.S_IFREG)
+
       else:
         self._debug('Conflictfile was preexisting -- adding change.')
-        tsumufs.syncLog.addChange(conflictpath, -1,
+        tsumufs.syncLog.addChange(conflictpath,
                                   startPos, endPos,
                                   '\x00' * (endPos - startPos))
     finally:
@@ -371,16 +371,8 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
           if e.errno != errno.ENOENT:
             raise
 
-          perms = tsumufs.cacheManager.statFile(conflicted_path)
-
           self._debug('Conflict dir missing -- creating.')
-          tsumufs.cacheManager.makeDir(tsumufs.conflictDir)
-
-          self._debug('Setting permissions.')
-          tsumufs.permsOverlay.setPerms(tsumufs.conflictDir,
-                                        perms.st_uid,
-                                        perms.st_gid,
-                                        0700 | stat.S_IFDIR)
+          tsumufs.cacheManager.makeDir(tsumufs.conflictDir, 0700)
 
           self._debug('Adding to synclog.')
           tsumufs.syncLog.addNew('dir', filename=tsumufs.conflictDir)
@@ -403,10 +395,10 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       tsumufs.cacheManager.unlockFile(tsumufs.conflictDir)
 
   def _handleConflicts(self, item, change):
-    if item.getType() != 'rename':
-      fusepath = item.getFilename()
+    if item.type != 'rename':
+      fusepath = item.filename
     else:
-      fusepath = item.getOldFilename()
+      fusepath = item.old_fname
 
     self._debug('Validating %s exists.' % tsumufs.conflictDir)
     self._validateConflictDir(fusepath)
@@ -419,7 +411,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
   def _handleChange(self, item, change):
     try:
-      type_ = item.getType()
+      type_ = item.type
       change_types = { 'new': self._propogateNew,
                        'link': self._propogateLink,
                        'unlink': self._propogateUnlink,
@@ -452,90 +444,96 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       while not tsumufs.unmounted.isSet():
         self._debug('TsumuFS not unmounted yet.')
 
-        time.sleep(2)
-        while (not tsumufs.fsBackend.pingServerOK()
+        while (not tsumufs.fsMount.fsMountCheckOK()
                and not tsumufs.unmounted.isSet()):
-          self._debug('sorry, fs unvailable')
-          time.sleep(15)
+          self._debug('NFS unavailable')
 
-        while (tsumufs.fsBackend.pingServerOK()
-               and not os.path.ismount(tsumufs.fsMountPoint)
+          if not tsumufs.forceDisconnect.isSet():
+            self._debug('Trying to mount fs')
+
+            self._attemptMount()
+            time.sleep(5)
+
+          else:
+            self._debug(('...because user forced disconnect. '
+                         'Not attempting mount.'))
+            time.sleep(5)
+
+        while (tsumufs.syncPause.isSet()
                and not tsumufs.unmounted.isSet()):
-          self._attemptMount()
-          time.sleep(5)
-
-        while tsumufs.syncPause.isSet():
           self._debug('User requested sync pause. Sleeping.')
           time.sleep(5)
 
-        while (tsumufs.fsBackend.fsMountCheckOK()
+        while (tsumufs.fsMount.fsMountCheckOK()
                and not tsumufs.unmounted.isSet()
                and not tsumufs.syncPause.isSet()):
-          try:
-            self._debug('Checking for items to sync.')
-            (item, change) = tsumufs.syncLog.popChange()
 
-          except IndexError:
-            self._debug('Nothing to sync. Sleeping.')
-            time.sleep(5)
-            continue
+          self._debug('Checking for items to sync.')
+          for (item, change) in tsumufs.syncLog.popChanges():
 
-          self._debug('Got one: %s' % repr(item))
+            self._debug('Got one: %s' % repr(item))
 
-          try:
-            tsumufs.syncWork.set() 
-            # Handle the change
-            self._debug('Handling change.')
-            self._handleChange(item, change)
-
-            # Mark the change as complete.
-            self._debug('Marking change %s as complete.' % repr(item))
+            if tsumufs.syncPause.isSet():
+              self._debug('... but user requested sync pause.')
+              tsumufs.syncLog.finishedWithChange(item, remove_item=False)
+              break
 
             try:
-              tsumufs.syncLog.finishedWithChange(item)
-              tsumufs.syncWork.clear()
-            except Exception, e:
-              exc_info = sys.exc_info()
+              tsumufs.syncWork.set()
 
-              self._debug('*** Unhandled exception occurred')
-              self._debug('***     Type: %s' % str(exc_info[0]))
-              self._debug('***    Value: %s' % str(exc_info[1]))
-              self._debug('*** Traceback:')
+              # Handle the change
+              self._debug('Handling change.')
+              self._handleChange(item, change)
 
-              for line in traceback.extract_tb(exc_info[2]):
-                self._debug('***    %s(%d) in %s: %s' % line)
+              # Mark the change as complete.
+              self._debug('Marking change %s as complete.' % repr(item))
 
-          except IOError, e:
-            self._debug('Caught an IOError in the middle of handling a change: '
-                        '%s' % str(e))
+              try:
+                tsumufs.syncLog.finishedWithChange(item)
+                tsumufs.syncWork.clear()
 
-            self._debug('Disconnecting from fs.')
-            tsumufs.fsAvailable.clear()
-            tsumufs.fsBackend.unmount()
+              except Exception, e:
+                exc_info = sys.exc_info()
 
-            self._debug('Not removing change from the synclog, but finishing.')
-            tsumufs.syncLog.finishedWithChange(item, remove_item=False)
+                self._debug('*** Unhandled exception occurred')
+                self._debug('***     Type: %s' % str(exc_info[0]))
+                self._debug('***    Value: %s' % str(exc_info[1]))
+                self._debug('*** Traceback:')
+
+                for line in traceback.extract_tb(exc_info[2]):
+                  self._debug('***    %s(%d) in %s: %s' % line)
+
+            except IOError, e:
+              self._debug('Caught an IOError in the middle of handling a change: '
+                          '%s' % str(e))
+
+              self._debug('Disconnecting from fs.')
+              tsumufs.fsAvailable.clear()
+              tsumufs.fsMount.unmount()
+
+              self._debug('Not removing change from the synclog, but finishing.')
+              tsumufs.syncLog.finishedWithChange(item, remove_item=False)
+
+              break
 
       self._debug('Shutdown requested.')
       self._debug('Unmounting fs.')
 
       try:
-        tsumufs.fsBackend.unmount()
+        tsumufs.fsMount.unmount()
       except:
         self._debug('Unable to unmount fs -- caught an exception.')
         tsumufs.syslogCurrentException()
       else:
         self._debug('fs unmount complete.')
 
-      self._debug('Saving synclog to disk.')
+      self._debug('Syncing changes to disk.')
 
       try:
-        tsumufs.syncLog.flushToDisk()
+        tsumufs.syncLog.checkpoint()
       except Exception, e:
-        self._debug('Unable to save synclog -- caught an exception.')
+        self._debug('Unable to commit changes -- caught an exception.')
         tsumufs.syslogCurrentException()
-      else:
-        self._debug('Synclog saved.')
 
       self._debug('SyncThread shutdown complete.')
 
@@ -570,7 +568,7 @@ def xattr_forceDisconnect(type_, path, value=None):
         tsumufs.forceDisconnect.clear()
       elif value == '1':
         tsumufs.forceDisconnect.set()
-        tsumufs.fsBackend.unmount()
+        tsumufs.fsMount.unmount()
         tsumufs.fsAvailable.clear()
       else:
         return -errno.EOPNOTSUPP

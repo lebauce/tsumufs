@@ -16,23 +16,29 @@
 
 '''TsumuFS, a fs-based caching filesystem.'''
 
-import sys
-import fuse
 import stat
 
 import tsumufs
 from metrics import benchmark
 from tsumufs.views import loadViews
 
+from ufo.filesystem import SyncDocument
+
 
 class ViewsManager(tsumufs.Debuggable):
   '''
-  Class designed to handle management of the virtual folders.
-  Each virtual folder provides a custom view of fs contents, 
-  displayed depending on ...
+  Class designed to handle management of the view folders.
+  Each view folder provides a custom view of filesystem contents.
+
+  This manager provides all system call capabilities as the
+  cache manager, in the context of virtual path defined by the
+  views.
+
+  All system calls are redirected to the instantiated view
+  corresponding to the fusepath given in parameter.
   '''
 
-  _views = {}     # A hash of view in
+  _views = {}  # A hash of loaded view instances
 
   def __init__(self):
     for view in loadViews():
@@ -40,9 +46,18 @@ class ViewsManager(tsumufs.Debuggable):
 
     self._debug("Loaded views: " + str(self._views.keys()))
 
-  def isLoadedViewPath(self, path):
+  def getRootDirs(self):
     '''
-    Test if it's a path to a view directory. 
+    Return all root views directories that should be displayed
+    in the viewPoint directory.
+    '''
+
+    for name in self._views.keys():
+        yield SyncDocument(filename=name, mode=0555 | stat.S_IFDIR)
+
+  def isAnyViewPath(self, path):
+    '''
+    Test if it's a path to a view directory.
     '''
 
     path.startswith(tsumufs.viewsPoint) and path != tsumufs.viewsPoint
@@ -50,52 +65,31 @@ class ViewsManager(tsumufs.Debuggable):
 
     return self._views.has_key(viewPath.split('/')[0])
 
-  def realFilePath(self, path):
+  def __getattr__(self, attr):
     '''
-    Return the real path of a view directory entry.
-    '''
-
-    x, x, viewPath = path.partition(tsumufs.viewsPoint + '/')
-    return self._views[viewPath.split('/')[0]].realFilePath(viewPath)
-
-  @benchmark
-  def getDirents(self, path):
-    '''
-    Return all directory views if path is the viewsPoint path,
-    or return dirents from a view directory's contents.
+    Redirect a wrapper that call the attribute on the instantiated view
+    corresponding to the fusepath given in parameter. The job of this
+    wrapper is to translate the fusepath to a path relative to the view
+    root directory.
     '''
 
-    if path == tsumufs.viewsPoint:
-      return self._views.keys()
+    # Wrapper function that make path arguments relative to the view path,
+    # and dispatch the call to the corresponding view instance.
+    def path_wrapper(*args):
+      view = None
+      wrapped_args = ()
 
-    else:
-      x, x, viewPath = path.partition(tsumufs.viewsPoint + '/')
-      return self._views[viewPath.split('/')[0]].getDirents(viewPath)
+      for arg in args:
+        if isinstance(arg, str) and self.isAnyViewPath(arg):
+          x, x, relative = arg.partition(tsumufs.viewsPoint + '/')
+          view = relative.split('/')[0]
+          wrapped_args += (relative,)
 
-  @benchmark
-  def statFile(self, path):
-    '''
-    Return the stat referenced by fusepath.
+        else:
+          wrapped_args += (arg,)
 
-    This method dispatch the stat request to the corresponding
-    view according to path.
-    '''
+      self._debug("Calling '%s%s' on '%s' view" % (attr, str(wrapped_args), str(view)))
 
-    x, x, viewPath = path.partition(tsumufs.viewsPoint + '/')
-    view = viewPath.split('/')[0]
-    
-    self._debug("Statting '%s' in view '%s'" % (path, view))
+      return getattr(self._views[view], attr).__call__(*wrapped_args)
 
-    return self._views[view].statFile(viewPath)
-
-  @benchmark
-  def access(self, uid, path, mode):
-    '''
-    This method dispatch the access request to the corresponding
-    view according to path.
-    '''
-
-    x, x, viewPath = path.partition(tsumufs.viewsPoint + '/')
-    view = viewPath.split('/')[0]
-
-    return self._views[view].access(uid, viewPath, mode)
+    return path_wrapper

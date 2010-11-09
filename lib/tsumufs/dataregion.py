@@ -16,6 +16,8 @@
 
 '''TsumuFS, a fs-based caching filesystem.'''
 
+from ufo.database import Document, TextField, IntegerField, ViewField
+
 
 class RangeError(Exception):
   '''
@@ -52,56 +54,21 @@ class RegionOverlapError(RegionError):
   pass
 
 
-class DataRegion(object):
+class DataRegionDocument(Document):
   '''
-  Class that represents a region of data in a file.
+  CouchDb document that represents a region of data in a file.
 
   This class is specifically used for managing the changes in files as
   stored in the cache on disk.
   '''
 
-  _data   = None
-  _start  = 0
-  _end    = 0
-  _length = 0
+  doctype       = TextField(default="DataRegionDocument")
+  filechangeid  = TextField()
 
-  def getData(self):
-    '''
-    Return the data that this object contains.
-
-    Returns:
-      String
-
-    Raises:
-      Nothing
-    '''
-
-    return self._data
-
-  def getStart(self):
-    '''
-    Return the start offset of the region in the file it represents.
-
-    Returns:
-      Integer
-
-    Raises:
-      Nothing
-    '''
-
-    return self._start
-
-  def getEnd(self):
-    '''
-    Return the end offset of the region in the file it represents.
-
-    Returns:
-      Integer
-
-    Raises:
-      Nothing
-    '''
-    return self._end
+  data   = TextField()
+  start  = IntegerField()
+  end    = IntegerField()
+  length = IntegerField()
 
   def __len__(self):
     '''
@@ -114,67 +81,68 @@ class DataRegion(object):
       None
     '''
 
-    return self._length
+    return self.length
 
   def __repr__(self):
     '''
     Method to display a somewhat transparent representation of a
-    DataRegion object.
+    DataRegionDocument object.
     '''
 
-    return('<DataRegion [%d:%d] (%d): %s>'
-           % (self._start, self._end, self._length, repr(self._data)))
+    return('<DataRegionDocument [%d:%d] (%d): %s>'
+           % (self.start, self.end, self.length, repr(self.data)))
 
-  def __init__(self, start, end, data):
+  def __init__(self, **hargs):
     '''
     Initializer. Can raise InvalidRegionSpecifiedError and
     RegionDoesNotMatchLengthError.
     '''
 
-    if (end < start):
-      raise RangeError, ('End of range is before start (%d, %d)'
-                         % (start, end))
+    if hargs:
+      if (hargs['end'] < hargs['start']):
+        raise RangeError, ('End of range is before start (%d, %d)'
+                           % (hargs['start'], hargs['end']))
 
-    if ((end - start) != len(data)):
-      raise RegionLengthError, (('Range specified (%d-%d) does not match '
-                                 'the length of the data (%d) given (%s).')
-                                % (start, end, len(data), repr(data)))
+      if ((hargs['end'] - hargs['start']) != len(hargs['data'])):
+        raise RegionLengthError, (('Range specified (%d-%d) does not match '
+                                   'the length of the data (%d) given (%s).')
+                                  % (hargs['start'], hargs['end'],
+                                     len(hargs['data']), repr(hargs['data'])))
 
-    self._start = start
-    self._end = end
-    self._data = data
-    self._length = len(data)
+      hargs['length'] = len(hargs['data'])
+
+    Document.__init__(self, **hargs)
 
   def canMerge(self, dataregion):
-    if ((dataregion._start == self._start) and   # |---|
-        (dataregion._end == self._end)):         # |===|
+    if ((dataregion.start == self.start) and   # |---|
+        (dataregion.end == self.end)):         # |===|
       return 'perfect-overlap'
 
-    elif ((dataregion._start < self._start) and  #       |-----|
-          (dataregion._end == self._start)):     # |====|
+    elif ((dataregion.start < self.start) and  #       |-----|
+          (dataregion.end == self.start)):     # |====|
       return 'left-adjacent'
 
-    elif ((dataregion._end > self._end) and      # |----|
-          (dataregion._start == self._end)):     #       |=====|
+    elif ((dataregion.end > self.end) and      # |----|
+          (dataregion.start == self.end)):     #       |=====|
       return 'right-adjacent'
 
-    elif ((dataregion._start > self._start) and  # |-----------|
-          (dataregion._end < self._end)):        #    |=====|
+    elif ((dataregion.start > self.start) and  # |-----------|
+          (dataregion.end < self.end)):        #    |=====|
       return 'inner-overlap'
 
-    elif ((dataregion._start < self._start) and  #    |-----|
-          (dataregion._end > self._end)):        # |===========|
+    elif ((dataregion.start < self.start) and  #    |-----|
+          (dataregion.end > self.end)):        # |===========|
       return 'outer-overlap'
 
-    elif ((dataregion._end >= self._start) and   #    |-----|
-          (dataregion._end <= self._end) and     # |=====|
-          (dataregion._start <= self._start)):   # |==|
-      return 'left-overlap'                      # |========|
+    elif ((dataregion.end >= self.start) and   #    |-----|
+          (dataregion.end <= self.end) and     # |=====|
+          (dataregion.start <= self.start)):   # |==|
+      return 'left-overlap'                    # |========|
 
-    elif ((dataregion._start >= self._start) and #    |-----|
-          (dataregion._start <= self._end) and   #       |=====|
-          (dataregion._end >= self._end)):       #          |==|
-      return 'right-overlap'                     #    |========|
+    elif ((dataregion.start >= self.start) and #    |-----|
+          (dataregion.start <= self.end) and   #       |=====|
+          (dataregion.end >= self.end)):       #          |==|
+      return 'right-overlap'                   #    |========|
 
     else:
       return None
@@ -191,7 +159,7 @@ class DataRegion(object):
     # Catch the invalid case where the region doesn't overlap
     # or is not adjacent.
     if merge_type == None:
-      raise RegionOverlapError, (('The DataRegion given does not '
+      raise RegionOverlapError, (('The DataRegionDocument given does not '
                                   'overlap this instance '
                                   '(%s, %s)') % (self, dataregion))
 
@@ -203,13 +171,14 @@ class DataRegion(object):
     # |-----------|
     #    |=====|
     elif merge_type == 'inner-overlap':
-      start_offset = dataregion._start - self._start
-      end_offset = self._length - (self._end - dataregion._end)
+      start_offset = dataregion.start - self.start
+      end_offset = self.length - (self.end - dataregion.end)
 
-      return DataRegion(self._start, self._end,
-                        (self._data[:start_offset] +
-                         dataregion._data +
-                         self._data[end_offset:]))
+      return DataRegionDocument(start=self.start,
+                                end=self.end,
+                                data=(self.data[:start_offset] +
+                                      dataregion.data +
+                                      self.data[end_offset:]))
 
     # Case where the dataregion is offset to the left and only
     # partially overwrites this one, inclusive of the end points.
@@ -217,9 +186,10 @@ class DataRegion(object):
     #         |======|
     #      |=====|
     elif merge_type == 'left-overlap':
-      start_offset = dataregion._end - self._start
-      return DataRegion(dataregion._start, self._end,
-                        dataregion._data + self._data[start_offset:])
+      start_offset = dataregion.end - self.start
+      return DataRegionDocument(start=dataregion.start,
+                                end=self.end,
+                                data=dataregion.data + self.data[start_offset:])
 
     # Case where the dataregion is offset to the left and only
     # partially overwrites this one, inclusive of the end points.
@@ -227,20 +197,28 @@ class DataRegion(object):
     #                |======|
     #                    |======|
     elif merge_type in 'right-overlap':
-      end_offset = self._length - (self._end - dataregion._start)
-      return DataRegion(self._start, dataregion._end,
-                        self._data[:end_offset] + dataregion._data)
+      end_offset = self.length - (self.end - dataregion.start)
+      return DataRegionDocument(start=self.start,
+                                end=dataregion.end,
+                                data=self.data[:end_offset] + dataregion.data)
 
     # Case where the dataregion is adjacent to the left.
     #            |-------|
     #     |=====|
     elif merge_type == 'left-adjacent':
-      return DataRegion(dataregion._start, self._end,
-                        dataregion._data + self._data)
+      return DataRegionDocument(start=dataregion.start,
+                                end=self.end,
+                                data=dataregion.data + self.data)
 
     # Case where the dataregion is adjacent to the right.
     #            |-------|
     #                     |======|
     elif merge_type == 'right-adjacent':
-      return DataRegion(self._start, dataregion._end,
-                        self._data + dataregion._data)
+      return DataRegionDocument(start=self.start,
+                                end=dataregion.end,
+                                data=self.data + dataregion.data)
+
+  @ViewField.define('dataregionchange')
+  def by_filechangeid(doc):
+    if doc['doctype'] == "DataRegionDocument":
+      yield doc['filechangeid'], doc

@@ -33,28 +33,29 @@ from fusefile import *
 from fusethread import *
 from syncthread import *
 from inodechange import *
-from nametoinodemap import *
 from syncitem import *
 from mutablestat import *
-from filepermission import *
-from permissionsoverlay import *
+from filesystemoverlay import *
 from extendedattributes import *
 from notification import *
 from metrics import *
-from database import *
 
-from fsBackend import *
-from nfsBackend import *
-from sambaBackend import *
-from sshfsBackend import *
+from fsmount import *
+from nfsmount import *
+from sambamount import *
+from sshfsmount import *
 
 from pynfs.nfs4constants import *
 from pynfs.nfs4types import *
 import pynfs.nfs4lib
 
+from ufo.utils import *
+from ufo.filesystem import *
+
 __version__ = (0, 14)
 
-debugMode = False
+populateDb = False
+debugMode  = False
 debugLevel = 0
 
 progName   = None
@@ -66,9 +67,12 @@ mountOptions = None
 
 # Set default values to options here,
 # I can't get default values working with optParse...
-rootUID      = os.getuid()
-rootGID      = os.getgid()
+rootUID      = 0
+rootGID      = 0
 rootMode     = 0555
+
+dbName       = "tsumufs"
+dbRemote     = None
 
 fsBaseDir    = None
 fsMountPoint = None
@@ -81,7 +85,6 @@ cacheBaseDir = '/var/cache/tsumufs'
 cacheSpecDir = '/var/lib/tsumufs/cachespec'
 cachePoint   = None
 cacheManager = None
-cacheDbPath  = None
 
 viewsPoint = ""
 viewsManager = None
@@ -89,21 +92,16 @@ viewsManager = None
 conflictDir  = '/.tsumufs-conflicts'
 
 syncLog = None
-synclogPath = None
-
-permsOverlay = None
-permsPath = None
-
-fsBackend = None
+fsOverlay = None
 
 notifier = None
+
 
 class EventNotifier(threading._Event):
 
   def __init__(self, noticationtype):
     threading._Event.__init__(self)
     self.type = noticationtype
-    # notifier.notify(self.type, False)
 
   def clear(self):
     threading._Event.clear(self)
@@ -113,11 +111,12 @@ class EventNotifier(threading._Event):
     threading._Event.set(self)
     notifier.notify(self.type, True)
 
+
 unmounted       = EventNotifier("unmounted")
 fsAvailable     = EventNotifier("connection")
 forceDisconnect = threading.Event()
-syncPause       = threading.Event()
-syncWork        = EventNotifier("synchronisation")
+syncPause       = EventNotifier("syncpause")
+syncWork        = EventNotifier("syncwork")
 
 defaultCacheMode = 0600         # readable only by the user
 

@@ -23,7 +23,6 @@ import errno
 import stat
 import statvfs
 import time
-import threading
 import traceback
 
 import fuse
@@ -78,7 +77,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     self._debug('Initializing permissions overlay object.')
     try:
-      tsumufs.permsOverlay = tsumufs.PermissionsOverlay()
+      tsumufs.fsOverlay = tsumufs.FileSystemOverlay()
     except:
       exc_info = sys.exc_info()
 
@@ -92,18 +91,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
-    self._debug('Loading SyncQueue.')
-    tsumufs.syncLog = tsumufs.SyncLog()
-
-    try:
-      tsumufs.syncLog.loadFromDisk()
-    except EOFError:
-      self._debug('Unable to load synclog. Aborting.')
-
     self._debug('Initializing notification object.')
 
     try:
-      tsumufs.notifier = tsumufs.notification.Notification()
+      tsumufs.notifier = tsumufs.Notification()
     except:
       exc_info = sys.exc_info()
 
@@ -122,13 +113,30 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('Initializing fsMount proxy.')
     try:
       if tsumufs.fsType in ['nfs', 'nfs4']:
-          tsumufs.fsBackend = tsumufs.NFSBackend()
+          tsumufs.fsMount = tsumufs.NFSMount()
       elif tsumufs.fsType == 'samba':
-          tsumufs.fsBackend = tsumufs.SAMBABackend()
+          tsumufs.fsMount = tsumufs.SAMBAMount()
       elif tsumufs.fsType == 'sshfs':
-          tsumufs.fsBackend = tsumufs.SSHFSBackend()
+          tsumufs.fsMount = tsumufs.SSHFSMount()
     except:
       # TODO(jtg): Erm... WHY can't we call tsumufs.syslogExceptHook here? O.o
+      exc_info = sys.exc_info()
+
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
+      return False
+
+    self._debug('Loading SyncQueue.')
+    try:
+      tsumufs.syncLog = tsumufs.SyncLog()
+    except:
+      # TODO(jtg): Same as above... We should really fix this.
       exc_info = sys.exc_info()
 
       self._debug('*** Unhandled exception occurred')
@@ -159,10 +167,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
-    # Start the threads
-    self._debug('Starting sync thread.')
-    self._syncThread.start()
-
     self._debug('Initializing viewsmanager object.')
     try:
       tsumufs.viewsManager = tsumufs.ViewsManager()
@@ -178,15 +182,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         self._debug('***    %s(%d) in %s: %s' % line)
 
       return False
-    
-    # A virer !!
-    tsumufs.unmounted.clear()
-    
-    self._debug('Adding / (%s) to permissions overlay.' % tsumufs.mountPoint)
-    tsumufs.permsOverlay.setPerms("/",
-                                  tsumufs.rootUID,
-                                  tsumufs.rootGID,
-                                  tsumufs.rootMode | stat.S_IFDIR)
+
+    # Start the threads
+    self._debug('Starting sync thread.')
+    self._syncThread.start()
 
     self._debug('fsinit complete.')
 
@@ -218,9 +217,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     self._debug('Setting event and condition states.')
     tsumufs.unmounted.set()
-    tsumufs.fsAvailable.clear()
-    tsumufs.syncWork.clear()
-    tsumufs.syncPause.clear()
 
     self._debug('Waiting for the sync thread to finish.')
     self._syncThread.join()
@@ -309,6 +305,15 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            default=None,
                            help=('Set the directory name for cache storage '
                                  '[default: calculated]'))
+    self.parser.add_option(mountopt='dbname',
+                           dest='dbName',
+                           default='tsumufs',
+                           help=('Set the database name for fs metadatas'
+                                 '[default: tsumufs]'))
+    self.parser.add_option(mountopt='dbremote',
+                           dest='dbRemote',
+                           default=None,
+                           help=('Set the directory name for cache storage'))
     self.parser.add_option(mountopt='viewspoint',
                            dest='viewsPoint',
                            default="",
@@ -353,7 +358,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            action='callback',
                            callback=lambda *args: self.fuse_args.add('fsname=/tmp/tsumufs-test-nfs-dir'),
                            help=('Fuse will work on bigger regions than 4Kbytes'))
-        
+
     self.parser.add_option('-d', '--debug',
                            dest='debugMode',
                            action='store_true',
@@ -364,6 +369,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            action='store',
                            help=('The debug level at which to output'
                                  'data. [default: 0]'))
+    self.parser.add_option('-p', '--populate-db',
+                           dest='populateDb',
+                           action='store_true',
+                           help='Enable the populating of the database. [default: %default]')
 
     # GO!
     self.parse(values=tsumufs, errex=1)
@@ -406,32 +415,26 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                         tsumufs.mountPoint.replace('/', '-'),
                                         'cache')
 
-    tsumufs.synclogPath = os.path.abspath(os.path.join(tsumufs.cachePoint,
-                                                       '../sync.log'))
-
-    tsumufs.permsPath = os.path.abspath(os.path.join(tsumufs.cachePoint,
-                                                     '../permissions.ovr'))
-
-    tsumufs.cacheDbPath = os.path.abspath(os.path.join(tsumufs.cachePoint,
-                                                       '../cache.db'))
-
     self._debug('fsType is %s' % tsumufs.fsType)
     self._debug('mountPoint is %s' % tsumufs.mountPoint)
     self._debug('fsMountPoint is %s' % tsumufs.fsMountPoint)
     self._debug('fsMountCmd is %s' % tsumufs.fsMountCmd)
     self._debug('cacheBaseDir is %s' % tsumufs.cacheBaseDir)
     self._debug('cachePoint is %s' % tsumufs.cachePoint)
+    self._debug('dbName is %s' % tsumufs.dbName)
+    self._debug('dbRemote is %s' % tsumufs.dbRemote)
     self._debug('viewsPoint is %s' % tsumufs.viewsPoint)
     self._debug('rootMode is %d' % tsumufs.rootMode)
     self._debug('rootUID is %d' % tsumufs.rootUID)
     self._debug('rootGID is %d' % tsumufs.rootGID)
-    self._debug('synclogPath is %s' % tsumufs.synclogPath)
-    self._debug('permsPath is %s' % tsumufs.permsPath)
-    self._debug('cacheDbPath is %s' % tsumufs.cacheDbPath)
     self._debug('mountOptions is %s' % tsumufs.mountOptions)
 
   def getManager(self, path):
-    if tsumufs.viewsManager.isLoadedViewPath(path):
+    '''
+    Fusepath could be a "viewpath" or a "fspath".
+    According to fusepath, the corresponding manager is returned.
+    '''
+    if tsumufs.viewsManager.isAnyViewPath(path):
       return tsumufs.viewsManager
     else:
       return tsumufs.cacheManager
@@ -452,7 +455,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       None
     '''
 
-    self._debug('opcode: getattr (%d) | self: %s | path: %s' % (self.GetContext()['pid'], repr(self), path))
+    self._debug('opcode: getattr (%d) | self: %s | path: %s'
+                % (self.GetContext()['pid'], repr(self), path))
 
     try:
       result = self.getManager(path).statFile(path)
@@ -535,7 +539,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     try:
       # Restore the real file path if the file has been acceded via
       # a view virtual folder.
-      if tsumufs.viewsManager.isLoadedViewPath(path):
+      if tsumufs.viewsManager.isAnyViewPath(path):
         path = tsumufs.viewsManager.realFilePath(path)
 
       xattr = tsumufs.ExtendedAttributes.getXAttr(type_, path, name)
@@ -602,6 +606,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       tsumufs.cacheManager.access(context['uid'], path, os.R_OK)
 
       retval = tsumufs.cacheManager.readLink(path)
+
       self._debug('Returning: %s' % retval)
       return retval
     except OSError, e:
@@ -649,28 +654,25 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: readdir | path: %s | offset: %d' % (path, offset))
 
     try:
-      filename = None
-      context = self.GetContext()
-      self.getManager(path).access(context['uid'], path, os.R_OK)
-
-      filenames = self.getManager(path).getDirents(path)
-      if path == tsumufs.viewsPoint:
-        filenames += tsumufs.viewsManager.getDirents(path)
-
-      for filename in filenames:
-        if filename in [ '.', '..' ]:
-          dirent = fuse.Direntry(filename)
-          dirent.type = stat.S_IFDIR
-          dirent.offset = offset
-        else:
-          pathname = os.path.join(path, filename)
-          stat_result = self.getManager(pathname).statFile(pathname)
-
-          dirent        = fuse.Direntry(filename)
-          dirent.type   = stat.S_IFMT(stat_result.st_mode)
-          dirent.offset = offset
+      for filename in [ '.', '..' ]:
+        dirent = fuse.Direntry(filename)
+        dirent.type = stat.S_IFDIR
+        dirent.offset = offset
 
         yield dirent
+
+      dociterators = [ self.getManager(path).getDirents(path) ]
+      if path == tsumufs.viewsPoint:
+        # Append the root directories of views
+        dociterators.append(tsumufs.viewsManager.getRootDirs())
+
+      for dociterator in dociterators:
+        for doc in dociterator:
+          dirent        = fuse.Direntry(str(doc.filename))
+          dirent.type   = stat.S_IFMT(doc.mode)
+          dirent.offset = offset
+
+          yield dirent
     except OSError, e:
       self._debug('readdir: Caught OSError on %s: errno %d: %s'
                   % (filename, e.errno, e.strerror))
@@ -691,14 +693,28 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       tsumufs.cacheManager.access(context['uid'], os.path.dirname(path),
                                   os.W_OK)
 
-      tsumufs.cacheManager.removeCachedFile(path)
-      tsumufs.syncLog.addUnlink(path, 'file')
+      if tsumufs.cacheManager.removeCachedFile(path, removeperm=True):
+        tsumufs.syncLog.addUnlink(path, 'file')
 
       return 0
+
     except OSError, e:
       self._debug('unlink: Caught OSError: errno %d: %s'
                   % (e.errno, e.strerror))
       return -e.errno
+
+    except Exception, e:
+      exc_info = sys.exc_info()
+
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
+      raise
 
   @benchmark
   def rmdir(self, path):
@@ -715,8 +731,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       context = self.GetContext()
       tsumufs.cacheManager.access(context['uid'], path, os.W_OK)
 
-      tsumufs.cacheManager.removeCachedFile(path)
-      tsumufs.syncLog.addUnlink(path, 'dir')
+      if tsumufs.cacheManager.removeCachedFile(path, removeperm=True):
+        tsumufs.syncLog.addUnlink(path, 'dir')
 
       return 0
     except OSError, e:
@@ -733,14 +749,14 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       True on successful link creation, or errno code on error.
     '''
 
-    self._debug('opcode: symlink | src: %s | dest:: %s' % (src, dest))
+    self._debug('opcode: symlink | src: %s | dest: %s' % (src, dest))
 
     try:
       context = self.GetContext()
       tsumufs.cacheManager.access(context['uid'], os.path.dirname(dest), os.W_OK | os.X_OK)
 
-      tsumufs.cacheManager.makeSymlink(src, dest)
-      tsumufs.syncLog.addNew('symlink', filename=dest)
+      if tsumufs.cacheManager.makeSymlink(src, dest):
+        tsumufs.syncLog.addNew('symlink', filename=dest)
 
       return 0
     except OSError, e:
@@ -779,6 +795,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       old_stat = tsumufs.cacheManager.statFile(old)
 
+      if tsumufs.viewsManager.isAnyViewPath(new):
+        tsumufs.viewsManager.rename(old, new)
+
+        return 0
+
       if stat.S_ISDIR(old_stat.st_mode):
         tsumufs.cacheManager.access(context['uid'], old, os.W_OK)
 
@@ -787,8 +808,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       tsumufs.cacheManager.access(context['uid'], os.path.dirname(new),
                                   os.X_OK | os.W_OK)
 
-      tsumufs.cacheManager.rename(old, new)
-      tsumufs.syncLog.addRename(old_stat.st_ino, old, new)
+      if tsumufs.cacheManager.rename(old, new):
+        tsumufs.syncLog.addRename(old, new)
 
       return 0
     except OSError, e:
@@ -830,14 +851,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     context = self.GetContext()
     file_stat = tsumufs.cacheManager.statFile(path)
 
-    try:
-      inode = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path))
-    except KeyError, e:
-      try:
-        inode = file_stat.st_ino
-      except (IOError, OSError), e:
-        inode = -1
-
     self._debug('context: %s' % repr(context))
     self._debug('file: uid=%d, gid=%d, mode=%o' %
                 (file_stat.st_uid, file_stat.st_gid, file_stat.st_mode))
@@ -853,10 +866,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       self._debug('chmod: access granted -- chmoding')
-      tsumufs.cacheManager.chmod(path, mode)
-      self._debug('chmod: adding metadata change')
-      # TODO(pouget): improve (fs|cache)inode management!
-      tsumufs.syncLog.addMetadataChange(path, inode, mode=mode)
+      if tsumufs.cacheManager.chmod(path, mode):
+        tsumufs.syncLog.addMetadataChange(path, mode=True)
 
       return 0
     except OSError, e:
@@ -879,26 +890,17 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     context = self.GetContext()
     file_stat = tsumufs.cacheManager.statFile(path)
 
-    try:
-      inode = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path))
-    except KeyError, e:
-      try:
-        inode = file_stat.st_ino
-      except (IOError, OSError), e:
-        inode = -1
-
     if context['uid'] != 0:
-      if newuid != -1:
-        raise OSError(errno.EPERM)
+      if newuid != -1 and context['uid'] != newuid:
+        raise OSError(errno.EPERM, os.strerror(errno.EPERM))
 
       if (file_stat.st_uid != context['uid']) and (newgid != -1):
-        if gid not in tsumufs.getGidsForUid(context['uid']):
-          raise OSError(errno.EPERM)
+        if newgid not in tsumufs.getGidsForUid(context['uid']):
+          raise OSError(errno.EPERM, os.strerror(errno.EPERM))
 
     try:
-      tsumufs.cacheManager.chown(path, newuid, newgid)
-      # TODO(pouget): improve (fs|cache)inode management!
-      tsumufs.syncLog.addMetadataChange(path, inode, uid=newuid, gid=newgid)
+      if tsumufs.cacheManager.chown(path, newuid, newgid):
+        tsumufs.syncLog.addMetadataChange(path, uid=True, gid=True)
 
       return 0
     except OSError, e:
@@ -961,16 +963,16 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     tsumufs.cacheManager.access(context['uid'], os.path.dirname(path), os.W_OK|os.X_OK)
 
     try:
-      tsumufs.cacheManager.makeNode(path, mode, dev)
+      if tsumufs.cacheManager.makeNode(path, mode, dev):
 
-      if mode & stat.S_IFREG:
-        tsumufs.syncLog.addNew('file', filename=path)
-      elif mode & stat.S_IFCHR:
-        tsumufs.syncLog.addNew('dev', filename=path, dev_type='char')
-      elif mode & stat.S_IFBLK:
-        tsumufs.syncLog.addNew('dev', filename=path, dev_type='block')
-      elif mode & stat.S_IFIFO:
-        tsumufs.syncLog.addNew('fifo', filename=path)
+        if mode & stat.S_IFREG:
+          tsumufs.syncLog.addNew('file', filename=path)
+        elif mode & stat.S_IFCHR:
+          tsumufs.syncLog.addNew('dev', filename=path, dev_type='char')
+        elif mode & stat.S_IFBLK:
+          tsumufs.syncLog.addNew('dev', filename=path, dev_type='block')
+        elif mode & stat.S_IFIFO:
+          tsumufs.syncLog.addNew('fifo', filename=path)
 
       return 0
     except OSError, e:
@@ -990,17 +992,16 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: mkdir | path: %s | mode: %o' % (path, mode))
 
     context = self.GetContext()
-    tsumufs.cacheManager.access(context['uid'], os.path.dirname(path),
+    self.getManager(path).access(context['uid'], os.path.dirname(path),
                                 os.W_OK|os.X_OK)
 
     try:
-      tsumufs.cacheManager.makeDir(path)
-      tsumufs.permsOverlay.setPerms(path,
-                                    context['uid'],
-                                    context['gid'],
-                                    mode | stat.S_IFDIR)
-      tsumufs.syncLog.addNew('dir', filename=path)
+      if tsumufs.viewsManager.isAnyViewPath(path):
+        tsumufs.viewsManager.makeDir(path, mode)
+        return 0
 
+      if tsumufs.cacheManager.makeDir(path, mode):
+        tsumufs.syncLog.addNew('dir', filename=path)
       return 0
 
     except OSError, e:
@@ -1036,24 +1037,13 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     context = self.GetContext()
     file_stat = tsumufs.cacheManager.statFile(path)
 
-    try:
-      inode = tsumufs.NameToInodeMap.nameToInode(tsumufs.fsPathOf(path))
-    except KeyError, e:
-      try:
-        inode = file_stat.st_ino
-      except (IOError, OSError), e:
-        inode = -1
-
     self._debug('context: %s' % repr(context))
     self._debug('file: uid=%d, gid=%d, mode=%o' %
                 (file_stat.st_uid, file_stat.st_gid, file_stat.st_mode))
 
     try:
-      tsumufs.cacheManager.utime(path, times)
-      self._debug('Adding meta data change to synclog [ %s | %d ]'
-                  % (path, inode))
-      # TODO(pouget): improve (fs|cache)inode management!
-      tsumufs.syncLog.addMetadataChange(path, inode, times=times)
+      if tsumufs.cacheManager.utime(path, times):
+        tsumufs.syncLog.addMetadataChange(path, times=True)
 
       return 0
     except OSError, e:
@@ -1081,6 +1071,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       self.getManager(path).access(context['uid'], path, mode)
+
       return 0
     except OSError, e:
       self._debug('access: Caught OSError: errno %d: %s'

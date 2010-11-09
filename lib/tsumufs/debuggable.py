@@ -69,8 +69,8 @@ class Debuggable(object):
     levels = {
       'CacheManager(_genCacheOpcodes)': 9,
       'CacheManager(_validateCache)':   9,
+      'CacheManager(_fsDataChanged)':   9,
       'CacheManager(_generatePath)':    9,
-      'CacheManager(_cacheStat)':       9,
       'CacheManager(_cacheFile)':       9,
       'CacheManager(_cacheDir)':        9,
       'CacheManager(statFile)':         9,

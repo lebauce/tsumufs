@@ -18,6 +18,7 @@
 
 import traceback
 import syslog
+import sys
 
 import fuse
 from fuse import Fuse
@@ -86,16 +87,15 @@ class ExtendedAttributes(tsumufs.Debuggable):
       try:
         return callback.__call__(type_, path)
       except Exception, e:
-        result  = '*** Unhandled exception occurred\n'
-        result += '***     Type: %s\n' % str(e.__class__)
-        result += '***    Value: %s\n' % str(e)
-        result += '*** Traceback:\n'
+        exc_info = sys.exc_info()
 
-        tb = traceback.extract_stack()
-        for line in tb:
-          result += '***    %s(%d) in %s: %s\n' % line
+        self._debug('*** Unhandled exception occurred')
+        self._debug('***     Type: %s' % str(exc_info[0]))
+        self._debug('***    Value: %s' % str(exc_info[1]))
+        self._debug('*** Traceback:')
 
-        return result
+        for line in traceback.extract_tb(exc_info[2]):
+          self._debug('***    %s(%d) in %s: %s' % line)
 
     raise KeyError('No extended attribute set for (%s, %s) pair.' %
                    (type_, name))
