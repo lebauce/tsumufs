@@ -1,7 +1,7 @@
 %define name TsumuFS
 %define version 0.14
 %define unmangled_version 0.14
-%define release 5
+%define release 6
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?python_sitearch: %define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
@@ -74,6 +74,35 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Tue Nov 9 2010 Kevin Pouget <pouget@agorabox.org> - 0.14-6
+Completetly changed the cache manager to a filesystem overlay based
+on the CouchedFilesystem api from python-ufo library, a middleware 
+based on CouchDB that handles all system calls on a mount point and
+manage himself the metadatas fo the filesystem in a CouchDB database.
+ 
+- Implemented the FilesystemOverlay that handles all reads and
+  updates on the metadatas of the local/remote filesystem.
+- Use the local or remote physical filesytem as the 'use-fs' opcode.
+- Keep in cache all metadatas document from the CouchDB databse to
+  minimize the overhead raised by the http request to database server.
+- Use python-ufo (CouchDB) to store the revision of the files in the
+  cache.
+- Removed the caching of the filesytem stats.
+- Forward all system calls to the filesystem overlay.
+- For each system calls, return to the fusethread the flag to add the
+  change to the sync log.
+- Pause the syncthread when a file is opened in write mode to significantly
+  increase performance of the fusethread.
+- Use python-ufo (CouchDB) views for tsumufs views.
+- Use python-ufo (CouchDB) database helper to store the persitent
+  sync log.
+- Use python-ufo (CouchDB) change feature to implement passive pool on
+  the sync log by the sync thread.
+- Renamed fsBackend, nfsBackend, sambaBackend and sshfsBackend to
+  fuse naming style fsmount, nfsmount, sambamount and sshfsmount.
+- Renamed view extensionssort into sortedbytype?
+- Added view staredbytag.
+
 * Wed Aug 25 2010 Kevin Pouget <pouget@agorabox.org> - 0.14-5
 Fixed check access to directories by implemented 'openddir' fuse system call
 Added primitive support for sqlite-based cache representation
