@@ -18,7 +18,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 '''
-TsumuFS, a NFS-based caching filesystem.
+TsumuFS is a disconnected, offline caching filesystem.
 
 This file contains the startup code that launches into the FuseThread
 class. See that module for more details.

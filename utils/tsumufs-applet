@@ -17,7 +17,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-'''TsumuFS, a fs-based caching filesystem.'''
+'''TsumuFS is a disconnected, offline caching filesystem.'''
 
 import os
 import os.path
@@ -27,248 +27,313 @@ import stat
 import traceback
 import shutil
 import time
-import threading
-from threading import *
+import augeas
+import ConfigParser
 
 import pygtk
 pygtk.require('2.0')
 
-import gtk
 import gobject
 import pynotify
 import xattr
 
 __version__  = (0, 1)
 
-import fuse
-#import tsumufs
-
 import dbus
 import dbus.glib
+import dbus.service
 import gobject
 
 # required
 import dbus.glib
 import gtk
 
+from ufo.database import DocumentHelper
+from tsumufs import SyncChangeDocument
+
+from threading import Thread, Timer
+
 gobject.threads_init()
 dbus.glib.init_threads()
 
 import gettext
-gettext.install('TsumuFS', 'locale', unicode=1) 
+gettext.install('tsumufs-applet', 'locale', unicode=1) 
 
-class TrayIconThread():
+class TrayIcon():
   _trayIcon = None
-  _tooltips = None
-  _eventBox = None
-  _displayImage = None
 
-  _mountPointPath = '.'
+  _fsMountPoint = None
 
-  _isUnmounted    = True
+  _isUnmounted    = False
+  _isPaused       = False
   _isConnected    = False
   _isConflicted   = False
-  _isSynchronized = True
+  _isSynchronizing = False
 
-  _iconPathPrefix ="/usr/share/tsumufs/icons"
+  _syncChanges = None
+
+  _updateIconTimer = None
   
-  _syncQueue = []
-  _syncTimer = None
+  _firstConnectedStatus = False
 
-  def __init__(self):
-
-    # TODO: ping tsumufs and retrieve default infos via dbus
-    if os.path.ismount("/var/tsumufs/overlay"):
-      self._isUnmounted = False
+  def __init__(self, fsMountPoint):
+    self._fsMountPoint = fsMountPoint
+    self._isUnmounted = False
 
     # Initializing TrayIcon object.
-    pynotify.init('TsumuFS')
+    pynotify.init('tsumufs-applet')
 
     self._trayIcon = gtk.StatusIcon()
-    self._tooltips = gtk.Tooltips()
+
     self._trayIcon.connect('popup-menu', self._popup)
     self._trayIcon.set_visible(1)
+    self._trayIcon.set_tooltip(_("Synchronization notifications"))
 
+    self.menu = gtk.Menu()
+
+    # Building state info menu item
+    self.state = gtk.ImageMenuItem(_("Disconnected"))
+    img = gtk.Image()
+    img.set_from_file(os.path.join(iconPathPrefix, 'ufo_icon.png'))
+    self.state.set_image(img)
+    self.menu.append(self.state)
+
+    # Building pause checkbox menu item
+    self.pausecheck = gtk.CheckMenuItem(_("Pause synchronization"))
+    self.pausecheck.connect('activate', self._pauseSynchronization)
+    self.menu.append(self.pausecheck)
+
+    bar = gtk.SeparatorMenuItem()
+    self.menu.append(bar)
+
+    # Build a submenu to show all items which are in the sync queue
+    self.sync = gtk.ImageMenuItem(_("Files not synchronized"))
+    path = os.path.join(iconPathPrefix, 'synchronized.png')
+    pImage = gtk.image_new_from_file(path)
+    self.sync.set_image(pImage)
+    self.sync.set_sensitive(False)
+    self.menu.append(self.sync)
+    
+    self.syncmenu = gtk.Menu()
+    self.sync.set_submenu(self.syncmenu)
+
+    self._updateIconTimer = Timer(2.0, self._updateIcon)
+
+    self._firstConnectedStatus = True
     self._updateIcon()
 
   def _updateIcon(self):
     """
-    Choose the trayIcon according to connexion state. 
-    If SyncWork event is set, then _isSynchronized is True
-    SyncWork is set during propogate changes
+    Choose the trayIcon according to connection state.
+    If SyncWork event is set, then _isSynchronizing is True
+    SyncWork is set during propagate changes.
     """
-    
+
     if self._isUnmounted:
-      path = os.path.join(self._iconPathPrefix, 'unmounted.png')
+      path = os.path.join(iconPathPrefix, 'unmounted.png')
+      label = _("Unavailable")
     elif not self._isConnected:
-      path = os.path.join(self._iconPathPrefix, 'disconnected.png')
-    elif self._isSynchronized:
-      path = os.path.join(self._iconPathPrefix, 'connected.png')
+      path = os.path.join(iconPathPrefix, 'disconnected.png')
+      label = _("Disconnected")
+    elif self._isPaused:
+      path = os.path.join(iconPathPrefix, 'paused.png')
+      label = _("Paused")
+    elif self._isSynchronizing:
+      path = os.path.join(iconPathPrefix, 'syncro_file.png')
+      label = _("Synchronizing")
     else:
-      path = os.path.join(self._iconPathPrefix, 'syncro_file.png')
+      path = os.path.join(iconPathPrefix, 'connected.png')
+      label = _("Connected")
 
     pixbuf = gtk.gdk.pixbuf_new_from_file(path)
 
     if self._isConflicted:
-      path = os.path.join(self._iconPathPrefix, 'conflicted.png')
+      path = os.path.join(iconPathPrefix, 'conflicted.png')
       pixbuf.blit_from_file(path)
 
     size = self._trayIcon.get_size()
     pixbuf.scale_simple(size, size, gtk.gdk.INTERP_BILINEAR)
     self._trayIcon.set_from_pixbuf(pixbuf)
+    
+    self.state.set_label(label)
 
   def _cleanup(self):
     gtk.main_quit()
 
   def _popup(self, icon, event_button, event_time):
-    """
-    Creating gtkMenu to get informations about files which are not synchronized
-    We don't care about Event.type
-    """
-    
-    menu = gtk.Menu()
-    if self._isSynchronized:
-        item1 = gtk.ImageMenuItem(_("Synchronized"))
-    elif self._isConnected:
-        item1 = gtk.ImageMenuItem(_("Connected"))
-    else:
-        item1 = gtk.ImageMenuItem(_("Disconnected"))
-        
-    path = os.path.join(self._iconPathPrefix, 'ufo_icon.png')
-    pImage = gtk.image_new_from_file(path)
-    item1.set_image(pImage)
-    menu.append(item1)
-    
-    bar = gtk.SeparatorMenuItem()
-    menu.append(bar)
-    
-    """
-    We're looking for if an item is sending to distant file system server
-    In that case, we display its name
-    """
-    if len(self._syncQueue) > 0:
-      syncitem = self._syncQueue[0]
-      name = syncitem['file']
-      item3 = gtk.ImageMenuItem(str(name))
-      path = os.path.join(self._iconPathPrefix, 'syncro_file.png')
-      pImage = gtk.image_new_from_file(path)
-      item3.set_image(pImage)   
-      menu.append(item3) 
-        
-    # Edit a submenu to show all items which are in the syncQueue
-    item2 = gtk.ImageMenuItem(_("Files not synchronized"))
-    path = os.path.join(self._iconPathPrefix, 'synchronized.png')
-    pImage = gtk.image_new_from_file(path)
-    item2.set_image(pImage)   
-    menu.append(item2)
-    
-    # Show an icon depending to type of changing (add, delete, modify, etc)
-    submenu = gtk.Menu()
-    if len(self._syncQueue) > 0:
-      for item in self._syncQueue:
-        file = item['file']
-        change = item['type']
+    self.menu.show_all()
+    self.menu.popup(None, None, gtk.status_icon_position_menu,
+                    event_button, event_time, icon)
 
-        subitem = gtk.ImageMenuItem(str(file))
-        if str(change) == "new":
-          path = os.path.join(self._iconPathPrefix, 'new_file.png')
-        elif str(change) == "link":
-          path = os.path.join(self._iconPathPrefix, 'new_file.png')
-        elif str(change) == "unlink":
-          path = os.path.join(self._iconPathPrefix, 'delete_file.png')
-        elif str(change) == "change":
-          path = os.path.join(self._iconPathPrefix, 'update_file.png')
-        elif str(change) == "rename":
-          path = os.path.join(self._iconPathPrefix, 'rename_file.png')
-
-        pImage = gtk.image_new_from_file(path)
-        subitem.set_image(pImage)
-        submenu.append(subitem)
-        subitem.show()
+  def _pauseSynchronization(self, state):
+    if self._isPaused:
+      xattr.setxattr(self._fsMountPoint, "tsumufs.pause-sync", '0')
+      self.pausecheck.set_active(False)
 
     else:
-      file = (_("No files queued"))
-      subitem = gtk.MenuItem(str(file))
-      submenu.append(subitem)
-      subitem.show()
+      xattr.setxattr(self._fsMountPoint, "tsumufs.pause-sync", '1')
+      self.pausecheck.set_active(True)
 
-    # Appending submenu to mainMenu        
-    item2.set_submenu(submenu)
-    item1.show()
-    bar.show()
-    if len(self._syncQueue) > 0:
-      item3.show()
-    item2.show()
-    menu.popup(None, None, gtk.status_icon_position_menu,
-               event_button, event_time, icon)
+  def _notifyConnectedStatus(self, status):
+    if status:
+      summary = _('Connected to server')
+      body = _('Successfully logged in to the synchronization server.')
+      uri = os.path.join(iconPathPrefix, 'ufo.png')
 
-  def _notifyDisconnected(self):
-    summary = 'Disconnected from server'
-    body = (_('You have been disconnected, file synchronisation paused'))
-    uri = os.path.join(self._iconPathPrefix, 'ufo.png')
+    else:
+      summary = _('Disconnected from server')
+      body = _('You have been disconnected, file synchronization stopped.')
+      uri = os.path.join(iconPathPrefix, 'ufo.png')
 
     notification = pynotify.Notification(summary, body, uri)
-    notification.attach_to_widget(self._trayIcon)
+    notification.attach_to_status_icon(self._trayIcon)
     notification.show()
 
-  def _handleSynchronisationItemSignal(self, item):
-    if item['action'] == 'append':
-      if len(self._syncQueue) == 0:
-        self._isSynchronized = False
-        self._updateIcon()
+  def _handleSyncPauseStatusSignal(self, status):
+    self._isUnmounted = False
 
-      self._syncQueue.append({'file' : item['file'], 
-                              'type' : item['type']})
+    print "Signal received: SyncPauseStatus, %s" % str(status)
+    self._isPaused = status
+    if not status:
+      self._rearmUpdateIconTimer()
     else:
-      try:
-        self._syncQueue.remove({'file' : item['file'], 
-                                'type' : item['type']})
-      except:
-        print str(item) + " not found in sync queue"
-
-      if len(self._syncQueue) == 0:
-        if self._syncTimer:
-          self._syncTimer.cancel()
-        self._isSynchronized = True
-        self._syncTimer = Timer(2.0, self._updateIcon)
-        self._syncTimer.start()
+      self._updateIcon()
 
   def _handleConnectionStatusSignal(self, status):
+    self._isUnmounted = False
+
+    print "Signal received: ConnectionStatus, %s" % str(status)
+
     old_isConnected = self._isConnected
     self._isConnected = status
 
     if self._isConnected != old_isConnected:
       self._updateIcon()
-      if self._isConnected == False:
-         self._notifyDisconnected()
+      if self._firstConnectedStatus:
+        self._notifyConnectedStatus(status)
+        self._firstConnectedStatus = False
 
-  def _handleSynchronisationStatusSignal(self, status):
-    self._updateIcon()
+  def _notifySyncWorkStatusSignal(self, status):
+    self._isUnmounted = False
+
+    print "Signal received: SyncWorkStatus, %s" % str(status)
+    self._isSynchronizing = status
+    if not status:
+      self._rearmUpdateIconTimer()
+    else:
+      self._updateIcon()
 
   def _handleUnmountedStatusSignal(self, status):
+    print "Signal received: UnmountedStatus, %s" % str(status)
     self._isUnmounted = status
     self._updateIcon()
 
+  def _rearmUpdateIconTimer(self):
+    self._updateIconTimer.cancel()
+    self._updateIconTimer = Timer(self._updateIconTimer.interval,
+                                  self._updateIconTimer.function)
+    self._updateIconTimer.start()
 
-class DbusMainLoopThread(threading.Thread):
+
+class MonitorChangesThread(Thread):
+  """
+  Fetch messages from the ufo core components file sharing platform.
+  """
+
+  _syncChanges = None
+
+  _changes = {}
+
+  _icon_names = { 'new'    : 'new_file.png',
+                  'link'   : 'new_file.png',
+                  'unlink' : 'delete_file.png',
+                  'change' : 'update_file.png',
+                  'rename' : 'rename_file.png' }
+
+  def __init__(self, dbname):
+    Thread.__init__(self, name='MonitorChangesThread')
+
+    self._syncChanges = DocumentHelper(SyncChangeDocument, dbname)
+
+  def _handleNewChange(self, syncchange):
+    if syncchange.type == "rename":
+      file = "%s -> %s" % (syncchange.old_fname, syncchange.new_fname)
+      name = syncchange.old_fname
+    else:
+      file = syncchange.filename
+      name = syncchange.filename
+
+    for key in self._changes:
+      if self._changes[key]['name'] == name:
+        icon.syncmenu.remove(self._changes[key]['obj'])
+
+    self._changes[syncchange.id] = { 'name' : name,
+                                     'obj'  : gtk.ImageMenuItem(str(file)) }
+
+    img = gtk.Image()
+    img.set_from_file(os.path.join(iconPathPrefix, self._icon_names[syncchange.type]))
+    self._changes[syncchange.id]['obj'].set_image(img)
+    icon.syncmenu.append(self._changes[syncchange.id]['obj'])
+
+    icon.sync.set_sensitive(True)
+
+  def run(self):
+    last_sequence = 0
+    for change in self._syncChanges.by_date():
+      self._handleNewChange(change)
+
+    while not icon._isUnmounted:
+      options = { 'feed'         : 'continuous',
+                  'include_docs' : True }
+
+      if last_sequence:
+        options['since'] = last_sequence
+
+      # Here we can not use to 'changes' method  from DumentHelper call
+      # because the filter on doctype attribute also filter 'delete' changes.
+      # So we use 'include_docs' options and filter the doctype manually.
+      for change in self._syncChanges.database.changes(**options):
+
+        print change
+
+        if change.has_key('last_seq'):
+          last_sequence = change.get('last_seq')
+
+        if not change.has_key('id'):
+          continue
+
+        if change.get('deleted') and self._changes.has_key(change['id']):
+          icon.syncmenu.remove(self._changes[change['id']]['obj'])
+          del self._changes[change['id']]
+
+          if icon.syncmenu.children():
+            icon.sync.set_sensitive(False)
+          continue
+
+        document = change['doc']
+        if document.get('doctype') == "SyncChangeDocument":
+          self._handleNewChange(self._syncChanges.by_id(key=change["id"], pk=True))
+
+
+class DbusMainLoopThread(Thread):
 
   def __init__(self):
-    threading.Thread.__init__(self, name='DbusMainLoopThread')
+    Thread.__init__(self, name='DbusMainLoopThread')
 
   def run(self):
     bus = dbus.SystemBus()
-    bus.add_signal_receiver(icon._handleConnectionStatusSignal, 
-                            dbus_interface = "org.tsumufs.NotificationService", 
+    bus.add_signal_receiver(icon._handleConnectionStatusSignal,
+                            dbus_interface = "org.tsumufs.NotificationService",
                             signal_name = "_notifyConnectionStatus")
-    # bus.add_signal_receiver(icon._handleSynchronisationStatusSignal, 
-    #                        dbus_interface = "org.tsumufs.NotificationService", 
-    #                        signal_name = "_notifySynchronisationStatus")
-    bus.add_signal_receiver(icon._handleUnmountedStatusSignal, 
-                            dbus_interface = "org.tsumufs.NotificationService", 
+    bus.add_signal_receiver(icon._notifySyncWorkStatusSignal,
+                            dbus_interface = "org.tsumufs.NotificationService",
+                            signal_name = "_notifySyncWorkStatus")
+    bus.add_signal_receiver(icon._handleUnmountedStatusSignal,
+                            dbus_interface = "org.tsumufs.NotificationService",
                             signal_name = "_notifyUnmountedStatus")
-    bus.add_signal_receiver(icon._handleSynchronisationItemSignal, 
-                            dbus_interface = "org.tsumufs.NotificationService", 
-                            signal_name = "_notifySynchronisationItem")
+    bus.add_signal_receiver(icon._handleSyncPauseStatusSignal,
+                            dbus_interface = "org.tsumufs.NotificationService",
+                            signal_name = "_notifySyncPauseStatus")
 
     loop = gobject.MainLoop()
     loop.run()
@@ -283,13 +348,41 @@ def daemonize():
 
 if __name__ == '__main__':
 
+  iconPathPrefix = "/usr/share/tsumufs/icons"
+
   # When demonized, we dont receive any dbus signals...
   # daemonize()
 
-  icon = TrayIconThread()
+  cf = ConfigParser.ConfigParser( defaults = { "debuglevel" : 0 } )
+  conf_fs = cf.read( [ os.path.join(os.path.expanduser("~"), ".tsumufs", "tsumufs.conf"),
+                       "/etc/tsumufs/tsumufs.conf" ])
+
+  if conf_fs:
+      print ("Using configuration file(s) : " + " ".join(conf_fs))
+  else:
+      print ("No configuration file found")
+      sys.exit(-1)
+
+  overlay = ''
+  for section in cf.sections():
+      if section == "globals": continue
+      overlay = cf.get(section, "overlay")
+      dbname = cf.get(section, "dbname")
+
+  version = None
+  while not version:
+    try:
+      version = xattr.getxattr(overlay, "tsumufs.version")
+      print "Tsumufs version %s mounted !" % version
+    except IOError, e:
+      print "Tsumufs not mounted yet !"
+
+  icon = TrayIcon(overlay)
+
+  _monitorChangesThread = MonitorChangesThread(dbname)
+  _monitorChangesThread.start()
 
   _dbusThread = DbusMainLoopThread()
   _dbusThread.start()
 
   gtk.main()
-
