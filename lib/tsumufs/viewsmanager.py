@@ -16,9 +16,7 @@
 
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
-import sys
 import stat
-import traceback
 
 import tsumufs
 from metrics import benchmark
