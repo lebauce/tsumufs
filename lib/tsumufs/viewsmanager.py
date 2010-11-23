@@ -16,7 +16,9 @@
 
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
+import sys
 import stat
+import traceback
 
 import tsumufs
 from metrics import benchmark
@@ -75,7 +77,7 @@ class ViewsManager(tsumufs.Debuggable):
 
     # Wrapper function that make path arguments relative to the view path,
     # and dispatch the call to the corresponding view instance.
-    def path_wrapper(*args):
+    def path_wrapper(*args, **kw):
       view = None
       wrapped_args = ()
 
@@ -90,6 +92,6 @@ class ViewsManager(tsumufs.Debuggable):
 
       self._debug("Calling '%s%s' on '%s' view" % (attr, str(wrapped_args), str(view)))
 
-      return getattr(self._views[view], attr).__call__(*wrapped_args)
+      return getattr(self._views[view], attr).__call__(*wrapped_args, **kw)
 
     return path_wrapper

@@ -118,7 +118,7 @@ class View(tsumufs.Debuggable):
     fields = {}
     occurrences = {}
 
-    filters = path.split('/')[1:]
+    filters = self.hackedPath(path).split('/')[1:]
     for filter in filters:
       fields[self.levels[filters.index(filter)]] = filter
 
@@ -126,7 +126,6 @@ class View(tsumufs.Debuggable):
     # names and save the real paths corresponding to of virtual files paths
     # for further use.
     for doc in self.viewDocuments.getDocuments(**fields):
-
       if occurrences.has_key(doc.filename):
         occurrences[doc.filename] += 1
         filename, fileext = os.path.splitext(doc.filename)
@@ -157,17 +156,30 @@ class View(tsumufs.Debuggable):
     '''
 
     if self.isFileLevel(path):
-      pathToStat = self.realFilePath(path)
+      return tsumufs.cacheManager.statFile(self.realFilePath(path))
 
     else:
-      # List parent directory and check if this path is valid
-      if path.count("/") and os.path.basename(path) not in \
-         [ doc.filename for doc in self.getDirents(os.path.dirname(path)) ]:
-        raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
+      rootDirStats = tsumufs.cacheManager.statFile(tsumufs.viewsPoint)
 
-      pathToStat = tsumufs.viewsPoint
+      if path.count("/"):
+        document = None
+        for doc in self.getDirents(os.path.dirname(path)):
+          if doc.filename == os.path.basename(path):
+            document = doc
 
-    return tsumufs.cacheManager.statFile(pathToStat)
+        if not document:
+          raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
+
+        for attr in ('uid', 'gid'):
+          if not getattr(document, attr):
+            setattr(document, attr, getattr(rootDirStats, 'st_%s' % attr))
+
+        document.set_stats(rootDirStats)
+
+        return document.get_stats()
+
+      else:
+        return rootDirStats
 
   def makeDir(self, path, mode):
     '''
@@ -188,14 +200,23 @@ class View(tsumufs.Debuggable):
     '''
     raise OSError(errno.EACCES, os.strerror(errno.EACCES))
 
+  def removeCachedFile(self, fusepath, removeperm=False):
+    '''
+    Default 'unlink'/'rmdir' behavior.
+    The name of this method is not relevant but it is the name
+    used in the cache manager, so do not modify it for instance.
+    '''
+    raise OSError(errno.EACCES, os.strerror(errno.EACCES))
+
   def realFilePath(self, path):
     '''
-    Retrieve the corresponding real fuspath of a virtual path.
+    Retrieve the corresponding real fusepath of a virtual path.
     '''
     if self.isFileLevel(path):
       try:
         realpath = self.bindings[path]
       except KeyError, e:
+        self._debug("Binding not found for %s (%s)" % (path, str(self.bindings)))
         raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
 
       return realpath
@@ -205,6 +226,9 @@ class View(tsumufs.Debuggable):
 
   def overlayPath(self, path):
     return os.path.join(os.sep, tsumufs.viewsPoint, path)
+
+  def hackedPath(self, path):
+    return path
 
   def isFileLevel(self, path):
     return path.count(os.sep) > len(self.levels)

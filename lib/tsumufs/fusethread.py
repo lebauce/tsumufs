@@ -690,10 +690,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       context = self.GetContext()
-      tsumufs.cacheManager.access(context['uid'], os.path.dirname(path),
-                                  os.W_OK)
+      self.getManager(os.path.dirname(path)).access(context['uid'],
+                                                    os.path.dirname(path),
+                                                    os.W_OK)
 
-      if tsumufs.cacheManager.removeCachedFile(path, removeperm=True):
+      if self.getManager(path).removeCachedFile(path, removeperm=True):
         tsumufs.syncLog.addUnlink(path, 'file')
 
       return 0
@@ -729,9 +730,9 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       context = self.GetContext()
-      tsumufs.cacheManager.access(context['uid'], path, os.W_OK)
+      self.getManager(path).access(context['uid'], path, os.W_OK)
 
-      if tsumufs.cacheManager.removeCachedFile(path, removeperm=True):
+      if self.getManager(path).removeCachedFile(path, removeperm=True):
         tsumufs.syncLog.addUnlink(path, 'dir')
 
       return 0
@@ -795,20 +796,17 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       old_stat = tsumufs.cacheManager.statFile(old)
 
-      if tsumufs.viewsManager.isAnyViewPath(new):
-        tsumufs.viewsManager.rename(old, new)
-
-        return 0
-
       if stat.S_ISDIR(old_stat.st_mode):
-        tsumufs.cacheManager.access(context['uid'], old, os.W_OK)
+        self.getManager(old).access(context['uid'], old, os.W_OK)
 
-      tsumufs.cacheManager.access(context['uid'], os.path.dirname(old),
-                                  os.X_OK | os.W_OK)
-      tsumufs.cacheManager.access(context['uid'], os.path.dirname(new),
-                                  os.X_OK | os.W_OK)
+      self.getManager(os.path.dirname(old)).access(context['uid'],
+                                                   os.path.dirname(old),
+                                                   os.X_OK | os.W_OK)
+      self.getManager(os.path.dirname(new)).access(context['uid'],
+                                                   os.path.dirname(new),
+                                                   os.X_OK | os.W_OK)
 
-      if tsumufs.cacheManager.rename(old, new):
+      if self.getManager(new).rename(old, new):
         tsumufs.syncLog.addRename(old, new)
 
       return 0
@@ -996,11 +994,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                 os.W_OK|os.X_OK)
 
     try:
-      if tsumufs.viewsManager.isAnyViewPath(path):
-        tsumufs.viewsManager.makeDir(path, mode)
-        return 0
-
-      if tsumufs.cacheManager.makeDir(path, mode):
+      if self.getManager(path).makeDir(path, mode):
         tsumufs.syncLog.addNew('dir', filename=path)
       return 0
 
