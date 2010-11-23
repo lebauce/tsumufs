@@ -1,7 +1,7 @@
 %define name TsumuFS
 %define version 0.14
 %define unmangled_version 0.14
-%define release 6
+%define release 7
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?python_sitearch: %define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
@@ -22,8 +22,7 @@ Requires: python pyxattr fuse-python pynfs notify-python pygobject2 dbus-python 
 
 
 %description
-TsumuFS is a disconnected, offline caching filesystem layer on top of file systems in the spirit of fexd and other caching filesystems (like Coda or Intermezzo). While these other filesystems require specific server-side support, TsumuFS 
-is designed to be simple and elegant by solving only the caching issue, and not the filesystem protocol itself.
+TsumuFS is a disconnected, offline caching filesystem layer on top of file systems in the spirit of fexd and other caching filesystems (like Coda or Intermezzo). While these other filesystems require specific server-side support, TsumuFS is designed to be simple and elegant by solving only the caching issue, and not the filesystem protocol itself.
 
 
 %prep
@@ -74,6 +73,14 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Tue Nov 23 2010 Kevin Pouget <pouget@agorabox.org> - 0.14-7
+- Improved fuusethread cache/views manager dispatching
+- Improved views statFile behavior
+- Implemented views removeCachedFile for 'unlink/rmdir' system calls
+- Removed non sens project title
+- Reintegrate tray icon based on database changes
+- Implemented tray icon action 'pause synchronization'
+
 * Tue Nov 9 2010 Kevin Pouget <pouget@agorabox.org> - 0.14-6
 Completetly changed the cache manager to a filesystem overlay based
 on the CouchedFilesystem api from python-ufo library, a middleware 
