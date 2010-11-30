@@ -266,7 +266,7 @@ class FuseFile(tsumufs.Debuggable):
       if size != statgoo.st_size:
         # Truncate the file...
         if tsumufs.cacheManager.truncateFile(self._path, size):
-          # ... and add the truncated data to the synclog if this is an old file
+          # ... and add the truncated data to the synclog if file exists
           if not self._isNewFile:
             if size < statgoo.st_size:
               data = tsumufs.cacheManager.readFile(self._path, size,

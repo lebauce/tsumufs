@@ -765,7 +765,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       context = self.GetContext()
       tsumufs.cacheManager.access(context['uid'], os.path.dirname(dest), os.W_OK | os.X_OK)
 
-      if tsumufs.cacheManager.makeSymlink(src, dest):
+      if tsumufs.cacheManager.makeSymlink(src, dest, context['uid'], context['gid']):
         tsumufs.syncLog.addNew('symlink', filename=dest)
 
       return 0
@@ -1003,7 +1003,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                 os.W_OK|os.X_OK)
 
     try:
-      if self.getManager(path).makeDir(path, mode):
+      if self.getManager(path).makeDir(path, mode, context['uid'], context['gid']):
         tsumufs.syncLog.addNew('dir', filename=path)
       return 0
 

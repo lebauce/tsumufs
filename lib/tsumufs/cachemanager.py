@@ -132,7 +132,7 @@ class CacheManager(tsumufs.Debuggable):
       self.unlockFile(fusepath)
 
   @benchmark
-  def fakeOpen(self, fusepath, flags, uid=None, gid=None, mode=None):
+  def fakeOpen(self, fusepath, flags, mode=None, uid=None, gid=None):
     '''
     Attempt to open a file on the local disk.
 
@@ -423,7 +423,7 @@ class CacheManager(tsumufs.Debuggable):
       self.unlockFile(fusepath)
 
   @benchmark
-  def makeSymlink(self, target, fusepath):
+  def makeSymlink(self, target, fusepath, uid, gid):
     '''
     Create a new symlink with the target specified.
 
@@ -446,14 +446,15 @@ class CacheManager(tsumufs.Debuggable):
         if e.errno != errno.ENOENT:
           raise
 
-      tsumufs.fsOverlay.symlink(target, fusepath, usefs=('use-fs' in opcodes))
+      tsumufs.fsOverlay.symlink(target, fusepath, uid=uid, gid=gid,
+                                usefs=('use-fs' in opcodes))
 
       return ('use-fs' not in opcodes)
     finally:
       self.unlockFile(fusepath)
 
   @benchmark
-  def makeDir(self, fusepath, mode):
+  def makeDir(self, fusepath, mode, uid, gid):
     self.lockFile(fusepath)
 
     try:
@@ -468,7 +469,8 @@ class CacheManager(tsumufs.Debuggable):
 
       self._debug("Making directory %s" % fusepath)
 
-      tsumufs.fsOverlay.mkdir(fusepath, mode, usefs=('use-fs' in opcodes))
+      tsumufs.fsOverlay.mkdir(fusepath, mode, uid=uid, gid=gid,
+                              usefs=('use-fs' in opcodes))
 
       return ('use-fs' not in opcodes)
     finally:

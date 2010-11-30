@@ -181,7 +181,7 @@ class View(tsumufs.Debuggable):
       else:
         return rootDirStats
 
-  def makeDir(self, path, mode):
+  def makeDir(self, path, mode, uid, gid):
     '''
     Default 'makeDir' system call behavior in a view.
     '''

@@ -77,7 +77,7 @@ class StaredByTagView(View, tsumufs.Debuggable):
         else:
           returned.remove(tag)
 
-  def makeDir(self, path, mode):
+  def makeDir(self, path, mode, uid, gid):
     '''
     Create a tag if path is at 'tag' level.
     '''
