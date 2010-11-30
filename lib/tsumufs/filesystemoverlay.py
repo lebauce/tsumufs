@@ -445,3 +445,11 @@ def xattr_fsOverlay(type_, path, value=None):
     return repr(FileSystemOverlay)
 
   return -errno.EOPNOTSUPP
+
+@extendedattribute('file', 'tsumufs.is-owner')
+def xattr_fsOverlay(type_, path, value=None):
+  if not value:
+    # TODO: do not use os.getuid()
+    return str(int(int(tsumufs.fsOverlay[path].uid) == int(os.getuid())))
+
+  return -errno.EOPNOTSUPP

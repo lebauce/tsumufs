@@ -33,7 +33,7 @@ class ExtendedAttributes(tsumufs.Debuggable):
   '''
 
   _attributeCallbacks = { 'root': {},
-                          'dir': {},
+                          'dir' : {},
                           'file': {} }
 
   @classmethod
@@ -87,15 +87,16 @@ class ExtendedAttributes(tsumufs.Debuggable):
       try:
         return callback.__call__(type_, path)
       except Exception, e:
-        exc_info = sys.exc_info()
+        result  = '*** Unhandled exception occurred\n'
+        result += '***     Type: %s\n' % str(e.__class__)
+        result += '***    Value: %s\n' % str(e)
+        result += '*** Traceback:\n'
 
-        self._debug('*** Unhandled exception occurred')
-        self._debug('***     Type: %s' % str(exc_info[0]))
-        self._debug('***    Value: %s' % str(exc_info[1]))
-        self._debug('*** Traceback:')
+        tb = traceback.extract_stack()
+        for line in tb:
+          result += '***    %s(%d) in %s: %s\n' % line
 
-        for line in traceback.extract_tb(exc_info[2]):
-          self._debug('***    %s(%d) in %s: %s' % line)
+        return result
 
     raise KeyError('No extended attribute set for (%s, %s) pair.' %
                    (type_, name))

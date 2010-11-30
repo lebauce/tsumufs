@@ -556,7 +556,16 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                   % (repr(type_), repr(path), repr(name)))
       return -errno.EOPNOTSUPP
     except Exception, e:
-      self._debug('*** Exception occurred: %s (%s)' % (str(e), e.__class__))
+      exc_info = sys.exc_info()
+
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
       return -errno.EINVAL
 
   @benchmark
