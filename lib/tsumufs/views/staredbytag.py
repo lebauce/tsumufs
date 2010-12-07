@@ -147,7 +147,7 @@ viewClass = StaredByTagView
 
 
 @extendedattribute('file', 'tsumufs.staredbytag.tags')
-def xattr_fsOverlay(type_, path, value=None):
+def xattr_tags(type_, path, value=None):
   if not value:
     return str(",".join(tsumufs.fsOverlay[path].tags))
 
