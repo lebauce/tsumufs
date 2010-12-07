@@ -205,12 +205,11 @@ class FileSystemOverlay(tsumufs.Debuggable):
     for doc in self._couchedLocal.listdir(path):
       try:
         self._cachedMetaDatas.acquire()
-
-        yield doc
         self._cachedMetaDatas.cache(os.path.join(doc.dirpath, doc.filename), doc)
-
       finally:
         self._cachedMetaDatas.release()
+
+      yield doc
 
   def cachedFileOpWrapper(self, couchedfs, function, *args, **kws):
     '''
@@ -446,7 +445,7 @@ def xattr_fsOverlay(type_, path, value=None):
 
   return -errno.EOPNOTSUPP
 
-@extendedattribute('file', 'tsumufs.is-owner')
+@extendedattribute('any', 'tsumufs.is-owner')
 def xattr_fsOverlay(type_, path, value=None):
   if not value:
     # TODO: do not use os.getuid()

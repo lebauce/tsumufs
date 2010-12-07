@@ -218,25 +218,27 @@ class CacheManager(tsumufs.Debuggable):
     Return the dirents from a directory's contents if cached.
     '''
 
-    self.lockFile(fusepath)
-
     try:
+      self.lockFile(fusepath)
+
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
 
       if 'enoent' in opcodes:
         raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
 
-      for doc in tsumufs.fsOverlay.listdir(fusepath):
-        # If fs not available and file not cached to disk, do not display it
-        if (not tsumufs.fsAvailable.isSet()
-            and not self.isCachedToDisk(os.path.join(fusepath, doc.filename))):
-          continue
-
-        yield doc
+      dirents = tsumufs.fsOverlay.listdir(fusepath)
 
     finally:
       self.unlockFile(fusepath)
+
+    for doc in dirents:
+      # If fs not available and file not cached to disk, do not display it
+      if (not tsumufs.fsAvailable.isSet()
+          and not self.isCachedToDisk(os.path.join(fusepath, doc.filename))):
+        continue
+
+      yield doc
 
   @benchmark
   def _flagsToStdioMode(self, flags):
@@ -262,7 +264,7 @@ class CacheManager(tsumufs.Debuggable):
     return result
 
   @benchmark
-  def releaseFile(self, fusepath):
+  def releaseFile(self, fusepath, flags):
     try:
       self.lockFile(fusepath)
 
@@ -270,7 +272,7 @@ class CacheManager(tsumufs.Debuggable):
 
       # Open a file in write mode and close it to raise
       # the update of the stats in the database.
-      tsumufs.fsOverlay.open(fusepath, os.O_RDWR,
+      tsumufs.fsOverlay.open(fusepath, flags,
                              usefs=('use-fs' in opcodes)).close()
 
       return ('use-fs' not in opcodes)
@@ -1216,13 +1218,13 @@ class CacheManager(tsumufs.Debuggable):
       self._cacheSpec[k] = v
     f.close()
 
+
 @extendedattribute('any', 'tsumufs.in-cache')
 def xattr_inCache(type_, path, value=None):
   if value:
     return -errno.EOPNOTSUPP
 
-  isCached, isLocalDir = tsumufs.cacheManager.isCachedToDisk(path)
-  if isCached:
+  if tsumufs.cacheManager.isCachedToDisk(path):
     return '1'
   return '0'
 

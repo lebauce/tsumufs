@@ -550,11 +550,13 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         return len(xattr)
       else:
         return xattr
+
     except KeyError, e:
       self._debug('Request for extended attribute that is not present in the '
                   'dictionary: <%s, %s, %s>'
                   % (repr(type_), repr(path), repr(name)))
       return -errno.EOPNOTSUPP
+
     except Exception, e:
       exc_info = sys.exc_info()
 
@@ -682,6 +684,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
           dirent.offset = offset
 
           yield dirent
+
     except OSError, e:
       self._debug('readdir: Caught OSError on %s: errno %d: %s'
                   % (filename, e.errno, e.strerror))
@@ -1076,10 +1079,24 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       self.getManager(path).access(context['uid'], path, mode)
 
       return 0
+
     except OSError, e:
       self._debug('access: Caught OSError: errno %d: %s'
                   % (e.errno, e.strerror))
       return -e.errno
+
+    except Exception, e:
+      exc_info = sys.exc_info()
+
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
+      raise
 
   @benchmark
   def statfs(self):

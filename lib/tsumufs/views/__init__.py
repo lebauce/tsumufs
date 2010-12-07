@@ -156,6 +156,11 @@ class View(tsumufs.Debuggable):
     '''
 
     if self.isFileLevel(path):
+      if not self.bindings.has_key(path):
+        for doc in self.getDirents(os.path.dirname(path)):
+          if self.bindings.has_key(path):
+            break
+
       return tsumufs.cacheManager.statFile(self.realFilePath(path))
 
     else:

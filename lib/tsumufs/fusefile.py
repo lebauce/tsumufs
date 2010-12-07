@@ -124,12 +124,15 @@ class FuseFile(tsumufs.Debuggable):
     self._fdFlags = self._fdFlags & (~os.O_TRUNC)
     self._fdFlags = self._fdFlags & (~os.O_CREAT)
 
-  def _flagsToString(self):
+  def _flagsToString(self, flags=None):
     string = ''
 
     for flag in dir(os):
       if flag.startswith('O_'):
         flag_value = eval('os.%s' % flag)
+
+        if not flags:
+          flags = self._fdFlags
 
         if self._fdFlags & flag_value:
           string += '|%s' % flag
@@ -204,10 +207,12 @@ class FuseFile(tsumufs.Debuggable):
       self._debug('Wrote %d bytes to cache.' % len(new_data))
 
       return len(new_data)
+
     except OSError, e:
       self._debug('OSError caught: errno %d: %s'
                   % (e.errno, e.strerror))
       return -e.errno
+
     except IOError, e:
       self._debug('IOError caught: %s' % str(e))
 
@@ -217,9 +222,9 @@ class FuseFile(tsumufs.Debuggable):
 
   @benchmark
   def release(self, flags):
-    self._debug('opcode: release | flags: %s' % flags)
+    self._debug('opcode: release | flags: %s' % self._flagsToString(flags))
 
-    tsumufs.cacheManager.releaseFile(self._path)
+    tsumufs.cacheManager.releaseFile(self._path, flags)
 
     if self._isNewFile:
       self._debug('Adding a new change to the log as it\'s a new file')
