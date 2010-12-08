@@ -806,7 +806,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       #  1. Stat old. If dir and not W_OK, EACCES
       #  2. Verify X_OK | W_OK on dirname(old) and dirname(new)
 
-      old_stat = tsumufs.cacheManager.statFile(old)
+      old_stat = self.getManager(old).statFile(old)
 
       if stat.S_ISDIR(old_stat.st_mode):
         self.getManager(old).access(context['uid'], old, os.W_OK)
@@ -818,10 +818,16 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                                    os.path.dirname(new),
                                                    os.X_OK | os.W_OK)
 
+      # Restore the real file path if old has been acceded via
+      # a view virtual folder.
+      if tsumufs.viewsManager.isAnyViewPath(old):
+        old = tsumufs.viewsManager.realFilePath(old)
+
       if self.getManager(new).rename(old, new):
         tsumufs.syncLog.addRename(old, new)
 
       return 0
+
     except OSError, e:
       self._debug('rename: Caught OSError: errno %d: %s'
                   % (e.errno, e.strerror))

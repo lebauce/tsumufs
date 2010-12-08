@@ -1263,4 +1263,3 @@ def xattr_shouldCache(type_, path, value=None):
   if tsumufs.cacheManager._shouldCacheFile(path):
     return '= (+)'
   return '= (-)'
-

@@ -45,8 +45,8 @@ class FuseFile(tsumufs.Debuggable):
   _uid       = None
   _gid       = None
   _pid       = None
-  _isNewFile = None
 
+  _isNewFile    = False
   _isSyncPauser = False
 
   @benchmark
