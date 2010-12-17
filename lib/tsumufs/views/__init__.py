@@ -19,6 +19,8 @@
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
 import os
+import sys
+import traceback
 import errno
 
 import tsumufs
@@ -43,7 +45,7 @@ class View(tsumufs.Debuggable):
 
     class SortedByTypeView(View):
 
-      # Name the view
+      # Name of the view.
       name = "Sorted by type"
 
       # Specify the levels of the view. Levels are the representation of
@@ -64,7 +66,7 @@ class View(tsumufs.Debuggable):
       #
       levels = ['category', 'type']
 
-      # Specify the python-ufo views class imported at head
+      # Specify the python-ufo views class imported at head.
       docClass = SortedByTypeSyncDocument
 
     # Assign the tsumufs view class to the global variable viewClass
@@ -126,19 +128,33 @@ class View(tsumufs.Debuggable):
     # names and save the real paths corresponding to of virtual files paths
     # for further use.
     for doc in self.viewDocuments.getDocuments(**fields):
-      if occurrences.has_key(doc.filename):
-        occurrences[doc.filename] += 1
-        filename, fileext = os.path.splitext(doc.filename)
-        customname = filename + " (" + str(occurrences[doc.filename]) + ")" + fileext
+      try:
+        if occurrences.has_key(doc.filename):
+          occurrences[doc.filename] += 1
+          filename, fileext = os.path.splitext(doc.filename)
+          customname = filename + " (" + str(occurrences[doc.filename]) + ")" + fileext
 
-      else:
-        occurrences[doc.filename] = 0
-        customname = doc.filename
+        else:
+          occurrences[doc.filename] = 0
+          customname = doc.filename
 
-      if self.isFileLevel(os.path.join(path, customname)):
-        self.bindings[os.path.join(path, customname)] = os.path.join(doc.dirpath, doc.filename)
+        if self.isFileLevel(os.path.join(path, customname)):
+          self.bindings[os.path.join(path, customname)] = os.path.join(doc.dirpath, doc.filename)
 
-      doc.filename = customname
+        doc.filename = customname
+
+      except Exception, e:
+        exc_info = sys.exc_info()
+
+        self._debug('*** Unhandled exception occurred')
+        self._debug('***     Type: %s' % str(exc_info[0]))
+        self._debug('***    Value: %s' % str(exc_info[1]))
+        self._debug('*** Traceback:')
+
+        for line in traceback.extract_tb(exc_info[2]):
+          self._debug('***    %s(%d) in %s: %s' % line)
+
+        continue
 
       yield doc
 
@@ -156,12 +172,11 @@ class View(tsumufs.Debuggable):
     '''
 
     if self.isFileLevel(path):
-      if not self.bindings.has_key(path):
-        for doc in self.getDirents(os.path.dirname(path)):
-          if self.bindings.has_key(path):
-            break
+      for doc in self.getDirents(os.path.dirname(path)):
+        if doc.filename == os.path.basename(path):
+          return tsumufs.cacheManager.statFile(self.realFilePath(path))
 
-      return tsumufs.cacheManager.statFile(self.realFilePath(path))
+      raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
 
     else:
       rootDirStats = tsumufs.cacheManager.statFile(tsumufs.viewsPoint)

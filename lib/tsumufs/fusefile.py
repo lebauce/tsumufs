@@ -110,7 +110,11 @@ class FuseFile(tsumufs.Debuggable):
     tsumufs.cacheManager.fakeOpen(path, self._fdFlags, self._fdMode,
                                   self._uid, self._gid)
 
-    self._isNewFile = self._fdFlags & os.O_CREAT
+    if self._fdFlags & os.O_CREAT:
+      self._debug('Adding a new change to the log as it\'s a new file')
+      tsumufs.syncLog.addNew('file', filename=self._path)
+
+      self._isNewFile = True
 
     if self._fdFlags & os.O_TRUNC:
       self.ftruncate(0)
@@ -226,10 +230,6 @@ class FuseFile(tsumufs.Debuggable):
 
     tsumufs.cacheManager.releaseFile(self._path, flags)
 
-    if self._isNewFile:
-      self._debug('Adding a new change to the log as it\'s a new file')
-      tsumufs.syncLog.addNew('file', filename=self._path)
-
     if self._isSyncPauser:
       tsumufs.syncPause.clear()
 
@@ -285,7 +285,7 @@ class FuseFile(tsumufs.Debuggable):
       return 0
 
     except OSError, e:
-      self._debug('truncate: Caught OSError: errno %d: %s'
+      self._debug('Caught OSError: errno %d: %s'
                   % (e.errno, e.strerror))
       return -e.errno
 

@@ -959,7 +959,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
   @benchmark
   def mknod(self, path, mode, dev):
     '''
-    Creates a special device file with the sepcified mode and device
+    Creates a special device file with the specified mode and device
     number.
 
     Returns:

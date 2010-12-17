@@ -861,12 +861,12 @@ class CacheManager(tsumufs.Debuggable):
 
         except StopIteration, e:
           tsumufs.fsOverlay.rmdir(fusepath,
-                                  remove_db=removeperm,
+                                  nodb=not removeperm,
                                   usefs=(removeperm and ('use-fs' in opcodes)))
 
       else:
         tsumufs.fsOverlay.unlink(fusepath,
-                                 remove_db=removeperm,
+                                 nodb=not removeperm,
                                  usefs=(removeperm and ('use-fs' in opcodes)))
 
       try:
@@ -1093,26 +1093,24 @@ class CacheManager(tsumufs.Debuggable):
     self.lockFile(fusepath)
 
     try:
-      try:
-        document = tsumufs.fsOverlay[fusepath]
+      document = tsumufs.fsOverlay[fusepath]
+      documentrev = document.rev
+      cachedrev   = tsumufs.fsOverlay.getCachedRevision(document.id)
 
-        documentrev = document.rev
-        cachedrev   = tsumufs.fsOverlay.getCachedRevision(document.id)
+      self._debug('%s changed ? Document revision %s, cached revision %s.'
+                  % (fusepath, documentrev, cachedrev))
 
-        self._debug('%s, document revision %s, cached revision %s'
-                    % (fusepath, documentrev, cachedrev))
+      return cachedrev < documentrev
 
-        return cachedrev < documentrev
+    except OSError, e:
+      if e.errno == errno.ENOENT:
+        return False
+      else:
+        raise
 
-      except OSError, e:
-        if e.errno == errno.ENOENT:
-          return False
-        else:
-          raise
-
-      except KeyError, e:
-        # Stats never cached
-        return True
+    except KeyError, e:
+      # Stats never cached
+      return True
 
     finally:
       self.unlockFile(fusepath)

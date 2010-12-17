@@ -104,9 +104,7 @@ class StaredByTagView(View, tsumufs.Debuggable):
       View.rename(self, old, new)
 
     overlaypath = self.overlayPath(old)
-    doc = tsumufs.fsOverlay[overlaypath]
-    doc.add_tag(os.path.basename(os.path.dirname(new)))
-    self._syncDocs.update(doc)
+    tsumufs.fsOverlay.tag(overlaypath, os.path.basename(os.path.dirname(new)))
 
     self._debug('Add "tags" metadata change for %s' % overlaypath)
     tsumufs.syncLog.addMetadataChange(overlaypath)
@@ -120,9 +118,7 @@ class StaredByTagView(View, tsumufs.Debuggable):
       tag = os.path.basename(os.path.dirname(path))
 
       realpath = self.realFilePath(path)
-      doc = self._syncDocs.by_path(key=realpath, pk=True)
-      doc.del_tag(tag)
-      self._syncDocs.update(doc)
+      tsumufs.fsOverlay.tag(realpath, tag, remove=True)
 
       self._debug('Add "tags" metadata change for %s' % realpath)
       tsumufs.syncLog.addMetadataChange(realpath)
@@ -130,14 +126,9 @@ class StaredByTagView(View, tsumufs.Debuggable):
     else:
       tag = os.path.basename(path)
 
-      documents = []
       for doc in self._syncDocs.by_tag(key=tag):
-        doc.del_tag(tag)
-        documents.append(doc)
+        tsumufs.fsOverlay.tag(os.path.join(doc.dirpath, doc.filename), tag, remove=True)
 
-      self._syncDocs.update(documents)
-
-      for doc in documents:
         self._debug('Add "tags" metadata change for %s'
                     % os.path.join(doc.dirpath, doc.filename))
         tsumufs.syncLog.addMetadataChange(os.path.join(doc.dirpath, doc.filename))
@@ -150,5 +141,12 @@ viewClass = StaredByTagView
 def xattr_tags(type_, path, value=None):
   if not value:
     return str(",".join(tsumufs.fsOverlay[path].tags))
+
+  return -errno.EOPNOTSUPP
+
+@extendedattribute('any', 'tsumufs.staredbytag.path')
+def xattr_mysharesPath(type_, path, value=None):
+  if not value:
+    return os.path.join(tsumufs.mountPoint, tsumufs.viewsPoint[1:], StaredByTagView.name)
 
   return -errno.EOPNOTSUPP

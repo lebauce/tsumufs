@@ -33,7 +33,7 @@ from ufo.utils import CacheDict
 from ufo.database import *
 
 
-class CachedRevisionDocument(Document):
+class CachedRevisionDocument(UTF8Document):
   '''
   CouchDb document to represent a document revision
   of a file in the cache.
@@ -435,6 +435,7 @@ class RootSyncDocument(SyncDocument):
 
     super(RootSyncDocument, self).__init__(**fixedfields)
 
+    self['_id'] = "00000000000000000000000000000000"
     self['_rev'] = "0-0123456789abcdef0123456789abcdef"
 
 

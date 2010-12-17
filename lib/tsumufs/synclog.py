@@ -538,9 +538,7 @@ class SyncLog(tsumufs.Debuggable):
     params['type'] = type
     params['date'] = time.time()
 
-    change = self._syncChanges.create(**params)
-
-    return change
+    return self._syncChanges.create(**params)
 
   def _removeFromSyncQueue(self, change):
     self._syncChanges.delete(change)

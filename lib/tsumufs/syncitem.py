@@ -23,7 +23,7 @@ from dataregion import *
 from ufo.database import *
 
 
-class SyncChangeDocument(Document):
+class SyncChangeDocument(UTF8Document):
   '''
   CouchDb document that encapsulates a change to the filesystem in the SyncLog.
   Note that this does /not/ include DataRegions -- specifically that should be
@@ -67,19 +67,16 @@ class SyncChangeDocument(Document):
         if key not in hargs.keys():
           raise TypeError('Missing required key %s' % key)
 
-    Document.__init__(self, **hargs)
+    super(SyncChangeDocument, self).__init__(**hargs)
 
   def __repr__(self):
-    return (('<SyncItem:'
-             ' type: %s'
-             ' filename: %s'
-             ' date: %d>')
+    return str(self)
+
+  def __str__(self):
+    return ('<SyncItem: type: %s filename: %s date: %d>'
             % (self.type,
                self.filename,
                self.date))
-
-  def __str__(self):
-    return repr(self)
 
   @ViewField.define('syncchange')
   def by_id(doc):
