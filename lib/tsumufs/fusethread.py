@@ -429,16 +429,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('rootGID is %d' % tsumufs.rootGID)
     self._debug('mountOptions is %s' % tsumufs.mountOptions)
 
-  def getManager(self, path):
-    '''
-    Fusepath could be a "viewpath" or a "fspath".
-    According to fusepath, the corresponding manager is returned.
-    '''
-    if tsumufs.viewsManager.isAnyViewPath(path):
-      return tsumufs.viewsManager
-    else:
-      return tsumufs.cacheManager
-
   ######################################################################
   # Filesystem operations and system calls below here
 
@@ -459,7 +449,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                 % (self.GetContext()['pid'], repr(self), path))
 
     try:
-      result = self.getManager(path).statFile(path)
+      result = tsumufs.getManager(path).statFile(path)
       self._debug('Returning (%d, %d, %o)' %
                   (result.st_uid, result.st_gid, result.st_mode))
 
@@ -497,7 +487,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                  'value: %s | size: %d')
                 % (path, name, value, size))
 
-    mode = self.getManager(path).statFile(path).st_mode
+    mode = tsumufs.getManager(path).statFile(path).st_mode
 
     if path == '/':
       type_ = 'root'
@@ -527,7 +517,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                 % (path, name, size))
 
     name = name.lower()
-    mode = self.getManager(path).statFile(path).st_mode
+    mode = tsumufs.getManager(path).statFile(path).st_mode
 
     if path == '/':
       type_ = 'root'
@@ -644,7 +634,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                  repr(context['pid'])))
 
     try:
-      self.getManager(path).access(context['uid'], path, os.R_OK | os.X_OK)
+      tsumufs.getManager(path).access(context['uid'], path, os.R_OK | os.X_OK)
       return 0
     except OSError, e:
       self._debug('opendir: Caught OSError: errno %d: %s'
@@ -672,7 +662,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
         yield dirent
 
-      dociterators = [ self.getManager(path).getDirents(path) ]
+      dociterators = [ tsumufs.getManager(path).getDirents(path) ]
       if path == tsumufs.viewsPoint:
         # Append the root directories of views
         dociterators.append(tsumufs.viewsManager.getRootDirs())
@@ -702,11 +692,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       context = self.GetContext()
-      self.getManager(os.path.dirname(path)).access(context['uid'],
+      tsumufs.getManager(os.path.dirname(path)).access(context['uid'],
                                                     os.path.dirname(path),
                                                     os.W_OK)
 
-      if self.getManager(path).removeCachedFile(path, removeperm=True):
+      if tsumufs.getManager(path).removeCachedFile(path, removeperm=True):
         tsumufs.syncLog.addUnlink(path, 'file')
 
       return 0
@@ -742,9 +732,9 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       context = self.GetContext()
-      self.getManager(path).access(context['uid'], path, os.W_OK)
+      tsumufs.getManager(path).access(context['uid'], path, os.W_OK)
 
-      if self.getManager(path).removeCachedFile(path, removeperm=True):
+      if tsumufs.getManager(path).removeCachedFile(path, removeperm=True):
         tsumufs.syncLog.addUnlink(path, 'dir')
 
       return 0
@@ -806,15 +796,15 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       #  1. Stat old. If dir and not W_OK, EACCES
       #  2. Verify X_OK | W_OK on dirname(old) and dirname(new)
 
-      old_stat = self.getManager(old).statFile(old)
+      old_stat = tsumufs.getManager(old).statFile(old)
 
       if stat.S_ISDIR(old_stat.st_mode):
-        self.getManager(old).access(context['uid'], old, os.W_OK)
+        tsumufs.getManager(old).access(context['uid'], old, os.W_OK)
 
-      self.getManager(os.path.dirname(old)).access(context['uid'],
+      tsumufs.getManager(os.path.dirname(old)).access(context['uid'],
                                                    os.path.dirname(old),
                                                    os.X_OK | os.W_OK)
-      self.getManager(os.path.dirname(new)).access(context['uid'],
+      tsumufs.getManager(os.path.dirname(new)).access(context['uid'],
                                                    os.path.dirname(new),
                                                    os.X_OK | os.W_OK)
 
@@ -823,7 +813,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       if tsumufs.viewsManager.isAnyViewPath(old):
         old = tsumufs.viewsManager.realFilePath(old)
 
-      if self.getManager(new).rename(old, new):
+      if tsumufs.getManager(new).rename(old, new):
         tsumufs.syncLog.addRename(old, new)
 
       return 0
@@ -1008,11 +998,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: mkdir | path: %s | mode: %o' % (path, mode))
 
     context = self.GetContext()
-    self.getManager(path).access(context['uid'], os.path.dirname(path),
+    tsumufs.getManager(path).access(context['uid'], os.path.dirname(path),
                                 os.W_OK|os.X_OK)
 
     try:
-      if self.getManager(path).makeDir(path, mode, context['uid'], context['gid']):
+      if tsumufs.getManager(path).makeDir(path, mode, context['uid'], context['gid']):
         tsumufs.syncLog.addNew('dir', filename=path)
       return 0
 
@@ -1082,7 +1072,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                  repr(context['pid'])))
 
     try:
-      self.getManager(path).access(context['uid'], path, mode)
+      tsumufs.getManager(path).access(context['uid'], path, mode)
 
       return 0
 

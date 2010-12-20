@@ -51,17 +51,18 @@ class FuseFile(tsumufs.Debuggable):
 
   @benchmark
   def __init__(self, path, flags, mode=None, uid=None, gid=None, pid=None):
-    # Restore the real file path if the file has been acceded via
-    # a view virtual folder.
-    if tsumufs.viewsManager.isAnyViewPath(path):
-      path = tsumufs.viewsManager.realFilePath(path)
-
-    self._path  = path
     self._fdFlags = flags
     self._fdMode  = mode
     self._uid = uid
     self._gid = gid
     self._pid = pid
+
+    # Restore the real file path if the file has been acceded via
+    # a view virtual folder.
+    if tsumufs.viewsManager.isAnyViewPath(path):
+      self._path = tsumufs.viewsManager.realFilePath(path)
+    else:
+      self._path = path
 
     self._setName('FuseFile <%s> ' % self._path)
     # NOTE: If mode == None, then we were called as a creat(2) system call,
@@ -84,30 +85,28 @@ class FuseFile(tsumufs.Debuggable):
 
     access_mode = 0
 
-    if self._fdFlags & (os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_APPEND):
+    if self._fdFlags & (os.O_CREAT | os.O_RDWR |os.O_WRONLY | os.O_TRUNC | os.O_APPEND):
       access_mode |= os.W_OK
 
       # Pause the synchronization thread while this thread
       # is copying the file to the cache to preserve performance.
       if not tsumufs.syncPause.isSet():
-        tsumufs.syncPause.set()
         self._isSyncPauser = True
+        tsumufs.syncPause.set()
 
     if self._fdFlags & os.O_RDONLY:
       access_mode |= os.R_OK
 
     # Verify access to the directory
-    self._debug('Verifying access to directory %s' % os.path.dirname(path))
-    tsumufs.cacheManager.access(self._uid,
-                                os.path.dirname(path),
-                                access_mode | os.X_OK)
+    self._debug('Verifying access to directory %s' % os.path.dirname(self._path))
+    tsumufs.cacheManager.access(self._uid, os.path.dirname(self._path), access_mode | os.X_OK)
 
     if not self._fdFlags & os.O_CREAT:
       self._debug('Checking access on file since we didn\'t create it.')
-      tsumufs.cacheManager.access(self._uid, path, access_mode)
+      tsumufs.cacheManager.access(self._uid, self._path, access_mode)
 
     self._debug('Calling fakeopen')
-    tsumufs.cacheManager.fakeOpen(path, self._fdFlags, self._fdMode,
+    tsumufs.cacheManager.fakeOpen(self._path, self._fdFlags, self._fdMode,
                                   self._uid, self._gid)
 
     if self._fdFlags & os.O_CREAT:

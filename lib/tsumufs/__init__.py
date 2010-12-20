@@ -145,6 +145,15 @@ def syslogExceptHook(type, value, tb):
     syslog.syslog(syslog.LOG_ERR, '***    %s(%d) in %s: %s'
                   % line)
 
+def getManager(path):
+  '''
+  Fusepath could be a "viewpath" or a "fspath".
+  According to fusepath, the corresponding manager is returned.
+  '''
+  if tsumufs.viewsManager.isAnyViewPath(path):
+    return tsumufs.viewsManager
+  else:
+    return tsumufs.cacheManager
 
 def fsPathOf(fusepath):
   '''

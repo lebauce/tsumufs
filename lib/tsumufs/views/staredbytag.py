@@ -19,6 +19,7 @@
 import os
 import fuse
 import stat
+import errno
 
 import tsumufs
 from tsumufs.views import View
