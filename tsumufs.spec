@@ -1,7 +1,6 @@
-%define name TsumuFS
-%define version 0.14
-%define unmangled_version 0.14
-%define release 7
+%define name tsumufs
+%define version 0.15
+%define release 3
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?python_sitearch: %define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
@@ -10,7 +9,6 @@ Summary: TsumuFS is a disconnected, offline caching filesystem.
 Name: %{name}
 Version: %{version}
 Release: %{release}%{dist}
-Source0: %{name}-%{unmangled_version}.tar.gz
 License: GPL v2
 Group: Development/Libraries
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -26,7 +24,6 @@ TsumuFS is a disconnected, offline caching filesystem layer on top of file syste
 
 
 %prep
-%setup -n tsumufs-%{unmangled_version}
 
 
 %build
@@ -73,7 +70,11 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
-* Tue Nov 23 2010 Kevin Pouget <pouget@agorabox.org> - 0.14-7
+* Tue Dec 21 2010 Kevin Pouget <pouget@agorabox.org> - 0.15-3
+- Added UTF-8 file paths support
+- Many bug fixes
+
+* Tue Nov 23 2010 Kevin Pouget <pouget@agorabox.org> - 0.15-2
 - Improved fuusethread cache/views manager dispatching
 - Improved views statFile behavior
 - Implemented views removeCachedFile for 'unlink/rmdir' system calls
@@ -81,7 +82,7 @@ rm -rf $RPM_BUILD_ROOT
 - Reintegrate tray icon based on database changes
 - Implemented tray icon action 'pause synchronization'
 
-* Tue Nov 9 2010 Kevin Pouget <pouget@agorabox.org> - 0.14-6
+* Tue Nov 9 2010 Kevin Pouget <pouget@agorabox.org> - 0.15-1
 Completetly changed the cache manager to a filesystem overlay based
 on the CouchedFilesystem api from python-ufo library, a middleware 
 based on CouchDB that handles all system calls on a mount point and
