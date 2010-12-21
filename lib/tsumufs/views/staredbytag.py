@@ -47,7 +47,7 @@ class StaredByTagView(View, tsumufs.Debuggable):
                   of the 'tag' level.
   '''
 
-  name = "Stared by tag"
+  name = _("Stared by tag")
 
   levels = ['tag']
 

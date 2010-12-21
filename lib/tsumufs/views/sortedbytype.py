@@ -36,7 +36,7 @@ class SortedByTypeView(View):
   and do not provides any custom behavior for system calls.
   '''
 
-  name = "Sorted by type"
+  name = _("Sorted by type")
 
   levels = ['category', 'type']
 
