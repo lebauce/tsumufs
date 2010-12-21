@@ -65,7 +65,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man1/tsumufs.1.gz
 %{_datadir}/tsumufs/icons/
 #%{_sysconfdir}/xdg/autostart/tsumufs-applet.desktop
-#%{_datadir}/applications/tsumufs-applet.desktop
+%{_datadir}/applications/tsumufs-applet.desktop
 %{_datadir}/locale/fr/LC_MESSAGES/tsumufs.mo
 
 
