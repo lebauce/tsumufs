@@ -50,5 +50,7 @@ setup(name='TsumuFS',
       cmdclass = { "build" : build_extra.build_extra,
                    "build_i18n" :  build_i18n.build_i18n,
                    "build_help" :  build_help.build_help,
-                   "build_icons" :  build_icons.build_icons }
+                   "build_icons" :  build_icons.build_icons },
+      include_package_data=True,
+      package_data = { 'tsumufs' : [ 'views/*.py' ] },
 )
