@@ -14,35 +14,48 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-'''TsumuFS is a disconnected, offline caching filesystem.'''
+'''TsumuFS, a fs-based caching filesystem.'''
 
 import os
+import pwd
+import fuse
+import stat
 
 import tsumufs
 from tsumufs.views import View
 
-from ufo.views import SortedByTypeSyncDocument
+from ufo import utils
+from ufo import errors
+from ufo.views import BuddySharesSyncDocument
+
+import xmlrpclib as rpc
+from ipalib.rpc import KerbTransport
 
 import gettext
 gettext.install('tsumufs', 'locale', unicode=1)
 
 
-class SortedByTypeView(View):
-  '''
-  Tsumufs view that sort the filesystem contents by mimetype.
+class BuddySharesView(View):
 
-  The first depth level of a view display all CATEGORIES of files
-  in the overlay. The second level display all TYPES of files within
-  a category.
+  name = _("Buddy shares")
 
-  This view is entirely based on the python-ufo view SortedByTypeView,
-  and do not provides any custom behavior for system calls.
-  '''
+  levels = ['buddy']
 
-  name = _("Sorted by type")
+  docClass = BuddySharesSyncDocument
 
-  levels = ['category', 'type']
+  def __init__(self):
+    View.__init__(self)
 
-  docClass = SortedByTypeSyncDocument
+  def hackedPath(self, path):
+    # Replace the full name name of the provider by his uid,
+    # as the python-ufo BuddyShares view use uid to retrieve docs
+    if path.count(os.sep) >= len(self.levels):
+      dirpath = os.sep.join(path.split(os.sep)[:2])
+      uid = self.statFile(dirpath).st_uid
+      listpath = path.split(os.sep)
+      listpath[1] = str(uid)
+      return os.sep.join(listpath)
 
-viewClass = SortedByTypeView
+    return path
+
+viewClass = BuddySharesView

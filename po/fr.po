@@ -6,31 +6,62 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TsumuFS 0.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2010-01-20 00:49+0100\n"
-"PO-Revision-Date: 2010-01-20 00:47+0100\n"
+"POT-Creation-Date: 2010-12-23 15:22+0100\n"
+"PO-Revision-Date: 2010-12-23 15:23+0100\n"
 "Last-Translator: Bob <sylvain.baubeau@agorabox.org>\n"
-"Language-Team: French\n"
+"Language-Team: French <>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: ../utils/tsumufs-applet:131
-msgid "Synchronized"
-msgstr "Synchronisé"
+#: ../utils/tsumufs-applet:89
+msgid "Synchronization and file sharing notifications"
+msgstr "Synchronisation et partage de fichiers"
 
-#: ../utils/tsumufs-applet:133
-msgid "Connected"
-msgstr "Connecté"
-
-#: ../utils/tsumufs-applet:135
+#: ../utils/tsumufs-applet:94 ../utils/tsumufs-applet:143
 msgid "Disconnected"
 msgstr "Déconnecté"
 
-#: ../utils/tsumufs-applet:159
+#: ../utils/tsumufs-applet:101
+msgid "Pause synchronization"
+msgstr "Mettre la synchronisation en pause"
+
+#: ../utils/tsumufs-applet:109
 msgid "Files not synchronized"
 msgstr "Fichiers en cours de synchronisation"
 
-#: ../utils/tsumufs-applet:190
-msgid "No files queued"
-msgstr "Aucun fichier dans la file"
+#: ../utils/tsumufs-applet:140
+msgid "Unavailable"
+msgstr "Indisponible"
+
+#: ../utils/tsumufs-applet:146
+msgid "Paused"
+msgstr "En pause"
+
+#: ../utils/tsumufs-applet:149
+msgid "Synchronizing"
+msgstr "En cours de synchronisation"
+
+#: ../utils/tsumufs-applet:152
+msgid "Connected"
+msgstr "Connecté"
+
+#: ../lib/tsumufs/views/sortedbytype.py:42
+msgid "Sorted by type"
+msgstr "Classement par type"
+
+#: ../lib/tsumufs/views/staredbytag.py:53
+msgid "Stared by tag"
+msgstr "Mes favoris"
+
+#: ../lib/tsumufs/views/myshares.py:50
+msgid "My shares"
+msgstr "Mes partages"
+
+#: ../lib/tsumufs/views/buddyshares.py:40
+msgid "Buddy shares"
+msgstr "Mes amis"
+
+#~ msgid "No files queued"
+#~ msgstr "Aucun fichier dans la file"

@@ -28,6 +28,9 @@ from tsumufs.extendedattributes import extendedattribute
 from ufo.database import DocumentHelper
 from ufo.views import TaggedSyncDocument
 
+import gettext
+gettext.install('tsumufs', 'locale', unicode=1)
+
 
 class StaredByTagView(View, tsumufs.Debuggable):
   '''
