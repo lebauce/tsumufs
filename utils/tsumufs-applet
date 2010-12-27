@@ -46,7 +46,11 @@ import gobject
 import dbus.glib
 import gtk
 
+from ufo import utils
 from ufo.database import DocumentHelper
+from ufo.sharing import FriendDocument, ShareDocument
+from ufo.constants import Notification, FriendshipStatus
+from ufo.notify import *
 
 from tsumufs import SyncChangeDocument
 
@@ -57,6 +61,9 @@ dbus.glib.init_threads()
 
 import gettext
 gettext.install('tsumufs-applet', 'locale', unicode=1) 
+
+import xmlrpclib as rpc
+from ipalib.rpc import KerbTransport
 
 
 class TrayIcon(gtk.StatusIcon):
@@ -116,12 +123,24 @@ class TrayIcon(gtk.StatusIcon):
     self.syncmenu = gtk.Menu()
     self.syncmain.set_submenu(self.syncmenu)
 
+    # Build a submenu to show all non read messages
+    self.notifymain = gtk.ImageMenuItem(_("Received messages"))
+    path = os.path.join(iconPathPrefix, 'synchronized.png')
+    pImage = gtk.image_new_from_file(path)
+    self.notifymain.set_image(pImage)
+    self.notifymain.set_sensitive(False)
+    self.menu.append(self.notifymain)
+
+    self.notifymenu = gtk.Menu()
+    self.notifymain.set_submenu(self.notifymenu)
+
     self._updateIconTimer = Timer(2.0, self._updateIcon)
 
     self._firstConnectedStatus = True
     self._updateIcon()
 
     self._monitorChangesThread = MonitorChangesThread(dbname)
+    self._monitorChangesThread.connect('notify-event', self.notifyChange)
     self._monitorChangesThread.connect('update-event', self.updateSyncMenu)
     self._monitorChangesThread.start()
 
@@ -208,6 +227,83 @@ class TrayIcon(gtk.StatusIcon):
     notification.attach_to_status_icon(self)
     notification.show()
 
+  def _notify_by_id(self, widget, id):
+    self._monitorChangesThread.getNotification(id)['notification'].show()
+
+  def notifyChange(self, widget, id):
+    gobject.idle_add(self._notifyChange, id)
+
+  def _notifyChange(self, id):
+    desc = self._monitorChangesThread.getNotification(id)
+
+    # Building notification
+    notification = pynotify.Notification(desc['title'], desc['body'], desc['icon'])
+    notification.attach_to_status_icon(self)
+    notification.set_urgency(pynotify.URGENCY_NORMAL)
+    notification.set_timeout(pynotify.EXPIRES_NEVER)
+
+    # Building menu item
+    menuitem = gtk.ImageMenuItem(desc['summary'])
+    img = gtk.Image()
+    img.set_from_file(desc['icon'])
+    menuitem.set_image(img)
+
+    desc['menuitem'] = menuitem
+    desc['notification'] = notification
+
+    # Adding the menu item to menu
+    menuitem.connect('activate', self._notify_by_id, id)
+    self.notifymenu.append(menuitem)
+    self.notifymain.set_sensitive(True)
+
+    # Add a generic action 'Ok' when no action defined
+    if not desc['actions']:
+      desc['actions'] = { 'none' : _('Ok') }
+
+    # Add some actions specific to the UFO distro client
+    if desc['type'] == 'NewShare':
+      desc['actions']['proceed-pending-shares'] = _('Open containing folder...')
+
+    # Connect actions to the callback
+    for action in desc['actions']:
+      notification.add_action(action,
+                              desc['actions'][action],
+                              self._changeNotificationClicked,
+                              id)
+
+    notification.attach_to_status_icon(self)
+    notification.show()
+
+  def _changeNotificationClicked(self, widget, event, id):
+      desc = self._monitorChangesThread.getNotification(id)
+
+      try:
+        menuitem = desc['menuitem']
+        notification = desc['notification']
+
+        # Calling corresponding callback
+        desc['callback'].__call__(event, id)
+
+        # If no errors, removing the menu item
+        self.notifymenu.remove(menuitem)
+        if not self.notifymenu.get_children():
+          self.notifymain.set_sensitive(False)
+
+        del notification
+        del menuitem
+        del widget
+
+      except Exception, e:
+        self._notifyError(_("Error while responding the invitation ('%s', %s)")
+                          % (event, str(e)))
+
+  def _notifyError(self, message):
+    error = pynotify.Notification(_("Error"),
+                                  _(message),
+                                  os.path.join(iconPathPrefix, 'ufo.png'))
+    error.attach_to_status_icon(self)
+    error.show()
+
   def _cleanup(self):
     gtk.main_quit()
 
@@ -290,8 +386,10 @@ class MonitorChangesThread(Thread, gobject.GObject):
   """
 
   _syncchange_helper = None
+  _notifification_helper = None
 
   _changes = {}
+  _notifications = {}
 
   _icon_names = { 'new'    : 'new_file.png',
                   'link'   : 'new_file.png',
@@ -299,20 +397,31 @@ class MonitorChangesThread(Thread, gobject.GObject):
                   'change' : 'update_file.png',
                   'rename' : 'rename_file.png' }
 
-  __gsignals__ = { 'update-event' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE, ())  }
+  __gsignals__ = { 'notify-event' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,
+                                    (gobject.TYPE_STRING,)),
+                   'update-event' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE, ())  }
 
   def __init__(self, dbname):
     Thread.__init__(self, name='MonitorChangesThread')
     self.__gobject_init__()
 
     self._syncchange_helper = DocumentHelper(SyncChangeDocument, dbname)
-
+    self._notifification_helper = DocumentHelper(NotificationDocument, dbname)
+    
     self.dbname = dbname
+
+  def getNotification(self, id=None):
+    if id:
+      return self._notifications[id]
+    return self._notifications
 
   def getChanges(self, id=None):
     if id:
       return self._changes[id]
     return self._changes
+
+  def _notify(self, id):
+    self.emit('notify-event', id)
 
   def _update(self):
     self.emit('update-event')
@@ -331,10 +440,64 @@ class MonitorChangesThread(Thread, gobject.GObject):
                                                            self._icon_names[syncchange.type]) }
     self._update()
 
+  def _handleNotification(self, notification):
+    if not self._notifications.has_key(notification.id):
+
+      # Adding notification to notification queue
+      self._notifications[notification.id] = { 'type'     : notification.subtype,
+                                               'title'    : notification.title,
+                                               'body'     : notification.body,
+                                               'icon'     : os.path.join(iconPathPrefix, 'ufo.png'),
+                                               'summary'  : notification.summary,
+                                               'actions'  : notification.actions,
+                                               'callback' : self._notificationClicked }
+      self._notify(notification.id)
+
+  def _notificationClicked(self, event, id):
+    print "Notification clicked: %s" % str(id)
+
+    try:
+      # Retrieve the notification type
+      subtype =  self._notifications[id].get('type')
+      helper = DocumentHelper(globals()[subtype + 'Notification'], self.dbname)
+
+      # Instantiate the corresponding class
+      notification = helper.by_id(key=id, pk=True)
+
+      # TODO: Move this in the TrayIcon code, as is UFO distro client specific
+      # Raise some behaviors specific to the UFO distro client
+      if event == 'proceed-pending-shares':
+        fullname = utils.get_user_infos(notification.following)['fullname']
+        os.system('gnome-open "%s/%s/%s/%s"' % (overlay, self.dbname, _('Buddy shares'), fullname))
+
+      # Raise the class method corresponding to clicked action
+      elif event != 'none':
+        getattr(notification, event).__call__()
+
+      del self._notifications[id]
+      helper.delete(notification)
+
+    except Exception, e:
+        import sys, traceback
+        exc_info = sys.exc_info()
+  
+        print ('*** Unhandled exception occurred')
+        print ('***     Type: %s' % str(exc_info[0]))
+        print ('***    Value: %s' % str(exc_info[1]))
+        print ('*** Traceback:')
+  
+        for line in traceback.extract_tb(exc_info[2]):
+          print ('***    %s(%d) in %s: %s' % line)
+
+        raise
+
   def run(self):
     last_sequence = 0
     for change in self._syncchange_helper.by_date():
       self._handleSyncChange(change)
+
+    for change in self._notifification_helper.by_id():
+      self._handleNotification(change)
 
     while True:
       options = { 'feed'         : 'continuous',
@@ -347,6 +510,8 @@ class MonitorChangesThread(Thread, gobject.GObject):
       # because the filter on doctype attribute also filter 'delete' changes.
       # So we use 'include_docs' options and filter the doctype manually.
       for change in self._syncchange_helper.database.changes(**options):
+
+        print change
 
         if change.has_key('last_seq'):
           last_sequence = change.get('last_seq')
@@ -366,6 +531,9 @@ class MonitorChangesThread(Thread, gobject.GObject):
 
         if doctype == "SyncChangeDocument":
           self._handleSyncChange(self._syncchange_helper.by_id(key=change["id"], pk=True))
+
+        elif doctype == "NotificationDocument":
+          self._handleNotification(self._notifification_helper.by_id(key=change["id"], pk=True))
 
 
 class DbusMainLoopThread(Thread):
@@ -425,6 +593,16 @@ if __name__ == '__main__':
       dbname = cf.get(section, "dbname")
 
   icon = TrayIcon(overlay, dbname)
+
+#  version = None
+#  while not version:
+#    try:
+#      version = xattr.getxattr(overlay, "tsumufs.version")
+#      print "Tsumufs version %s mounted !" % version
+#    except IOError, e:
+#      print "Tsumufs not mounted yet !"
+#
+#      time.sleep(3)
 
   _dbusThread = DbusMainLoopThread()
   _dbusThread.start()
