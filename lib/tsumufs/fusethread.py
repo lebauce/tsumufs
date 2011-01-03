@@ -1135,3 +1135,10 @@ def xattr_version(type_, path, value=None):
     return '.'.join(map(str, tsumufs.__version__))
 
   return -errno.EOPNOTSUPP
+
+@extendedattribute('root', 'tsumufs.dbname')
+def xattr_dbname(type_, path, value=None):
+  if not value:
+    return tsumufs.dbName
+
+  return -errno.EOPNOTSUPP

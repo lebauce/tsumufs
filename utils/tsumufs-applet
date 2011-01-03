@@ -80,7 +80,7 @@ class TrayIcon(gtk.StatusIcon):
 
   _firstConnectedStatus = False
 
-  def __init__(self, fsMountPoint, dbname):
+  def __init__(self, fsMountPoint):
     gtk.StatusIcon.__init__(self)
     self.__gobject_init__()
 
@@ -138,6 +138,22 @@ class TrayIcon(gtk.StatusIcon):
 
     self._firstConnectedStatus = True
     self._updateIcon()
+
+    while gtk.events_pending():
+      gtk.main_iteration(False)
+
+    # Waiting for tsumufs responding
+    version = None
+    while not version:
+      try:
+        version = xattr.getxattr(overlay, "tsumufs.version")
+        print "Tsumufs version %s mounted !" % version
+
+        dbname = xattr.getxattr(overlay, "tsumufs.dbname")
+
+      except IOError, e:
+        print "Tsumufs not mounted yet !"
+        time.sleep(3)
 
     self._monitorChangesThread = MonitorChangesThread(dbname)
     self._monitorChangesThread.connect('notify-event', self.notifyChange)
@@ -590,19 +606,8 @@ if __name__ == '__main__':
   for section in cf.sections():
       if section == "globals": continue
       overlay = cf.get(section, "overlay")
-      dbname = cf.get(section, "dbname")
 
-  icon = TrayIcon(overlay, dbname)
-
-#  version = None
-#  while not version:
-#    try:
-#      version = xattr.getxattr(overlay, "tsumufs.version")
-#      print "Tsumufs version %s mounted !" % version
-#    except IOError, e:
-#      print "Tsumufs not mounted yet !"
-#
-#      time.sleep(3)
+  icon = TrayIcon(overlay)
 
   _dbusThread = DbusMainLoopThread()
   _dbusThread.start()
