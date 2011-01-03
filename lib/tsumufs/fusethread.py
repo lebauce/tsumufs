@@ -262,7 +262,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     # Add in the named options we care about.
     self.parser.add_option(mountopt='fstype',
                            dest='fsType',
-                           default="nfs4",
+                           default='nfs4',
                            help=('Set the type of the undelying filesystem'))
     self.parser.add_option(mountopt='fsbasedir',
                            dest='fsBaseDir',
@@ -287,7 +287,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                  '[default: %default]'))
     self.parser.add_option(mountopt='fsmountmethod',
                            dest='fsMountMethod',
-                           default="normal",
+                           default='default',
                            help=('Set the fs mount method '
                                  '[default: %default]'))
     self.parser.add_option(mountopt='cachebasedir',
@@ -316,24 +316,28 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            help=('Set the directory name for cache storage'))
     self.parser.add_option(mountopt='viewspoint',
                            dest='viewsPoint',
-                           default="",
+                           default='',
                            help=('Set the relative views folders path'))
     self.parser.add_option(mountopt='rootuid',
                            dest='rootUID',
-                           default=os.getuid(),
+                           default=0,
                            help=('Set the overlay root directory owner uid '
-                                 '[default: current user]'))
+                                 '[default: superuser]'))
     self.parser.add_option(mountopt='rootgid',
                            dest='rootGID',
-                           default=os.getgid(),
+                           default=0,
                            help=('Set the overlay root directory owner gid '
-                                 '[default: current group]'))
+                                 '[default: superuser]'))
     self.parser.add_option(mountopt='rootmode',
                            dest='rootMode',
                            default=0555,
                            help=('Set the overlay root directory mode '
                                  '[default: 0555 (r-xr-xr-x)]'))
 
+    self.parser.add_option('-S',
+                           dest='mountSource',
+                           default=None,
+                           help=('Set the fs source uri [default: %default]'))
     self.parser.add_option('-O',
                            dest='mountOptions',
                            default=None,
@@ -378,18 +382,17 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self.parse(values=tsumufs, errex=1)
 
     # Verify we have a source and destination to mount.
-    if len(self.cmdline[1]) != 2:
+    if len(self.cmdline[1]) != 1:
       sys.stderr.write(('%s: invalid number of arguments provided: '
-                       'expecting source and destination.\n') %
+                       'expecting source.\n') %
                        tsumufs.progName)
       sys.exit(1)
 
-    # Pull out the source and point
-    tsumufs.mountSource = self.cmdline[1][0]
-    tsumufs.mountPoint  = self.cmdline[1][1]
+    # Pull out the mount point
+    tsumufs.mountPoint  = self.cmdline[1][0]
 
     # Make sure the source and point don't contain trailing slashes.
-    if tsumufs.mountSource[-1] == '/':
+    if tsumufs.mountSource and tsumufs.mountSource[-1] == '/':
       tsumufs.mountSource = tsumufs.mountSource[:-1]
     if tsumufs.mountPoint[-1] == '/':
       tsumufs.mountPoint = tsumufs.mountPoint[:-1]

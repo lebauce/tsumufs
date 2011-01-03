@@ -31,8 +31,11 @@ class SSHFSMountError(Exception):
 class SSHFSMount(tsumufs.FSMount):
 
   def __init__(self):
-    self.server_ip = tsumufs.mountSource.slit(":")[0]
-    self.server_port = 22
+    self_serverIp = str(tsumufs.mountSource).slit(":")[0]
+    if self._serverIp:
+      # Use port 22 as default
+      self._serverPort = 22
+
     tsumufs.FSMount.__init__(self)
 
   def pingServerOK(self):
@@ -41,12 +44,15 @@ class SSHFSMount(tsumufs.FSMount):
     '''
     try:
       PySocket = socket.socket(AF_INET,SOCK_DGRAM)
-      PySocket.connect((self.server_ip, self.server_port))
+      PySocket.connect((self._serverIp, self._serverPort))
     except socket.error, e:
         PySocket.close()
         return False
 
     PySocket.close()
     return True
+
+  def findServerInfos(self):
+    raise Exception('Not yet implemented !')
         
 

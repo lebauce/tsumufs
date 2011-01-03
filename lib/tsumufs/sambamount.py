@@ -34,11 +34,11 @@ class SAMBAMount(tsumufs.FSMount):
     '''
     Method to verify that the SAMBA server is available.
     '''
-    retval=os.system("/usr/bin/smbclient -L //192.168.1.13/haksan")
+    retval=os.system('/usr/bin/smbclient -L %s' % tsumufs.mountSource)
     if retval == 0:
       return True
     else:
       return False
 
-    
-
+  def findServerInfos(self):
+    raise Exception('Not yet implemented !')

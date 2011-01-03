@@ -42,6 +42,9 @@ class FSMount(tsumufs.Debuggable):
 
   _fileLocks = {}
 
+  _serverIp   = None
+  _serverPort = None
+
   def __init__(self):
     pass
 
@@ -84,6 +87,10 @@ class FSMount(tsumufs.Debuggable):
     '''
     Method to verify that the File System server is available and mounted
     '''
+
+    if not (self._serverIp and self._serverPort):
+      self.findServerInfos()
+
     if self.pingServerOK() and os.path.ismount(tsumufs.fsMountPoint):
       tsumufs.fsAvailable.set()
       return True
@@ -253,12 +260,21 @@ class FSMount(tsumufs.Debuggable):
         cmd += ' -o ' + tsumufs.mountOptions
 
       self._debug('Mount method: %s.' % tsumufs.fsMountMethod)
-      if tsumufs.fsMountMethod == "normal":
+      if tsumufs.fsMountMethod == "default":
         cmd += ' ' + tsumufs.mountSource + ' ' + tsumufs.fsMountPoint
+
       elif tsumufs.fsMountMethod == "fstab":
         cmd = tsumufs.fsMountCmd + ' ' + tsumufs.fsMountPoint
+
       elif tsumufs.fsMountMethod == "sudo":
         cmd = '/usr/bin/sudo -u root ' + cmd + ' ' + tsumufs.mountSource + ' ' + tsumufs.fsMountPoint
+
+      elif tsumufs.fsMountMethod == "autofs":
+        self._debug('Returning True as mount method is autofs.')
+        return True
+
+      else:
+        raise Exception("Unknown mount method '%s'", tsumufs.fsMountMethod)
 
       self._debug(cmd)
       rc = os.system(cmd) >> 8
@@ -294,6 +310,3 @@ class FSMount(tsumufs.Debuggable):
     else:
       self._debug('Unmount of file system succeeded.')
       return True
-
-#    self._debug('Invalidating name to inode map')
-#    tsumufs.NameToInodeMap.invalidate()

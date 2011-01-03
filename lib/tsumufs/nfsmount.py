@@ -31,15 +31,20 @@ class NFSMountError(Exception):
 
 class NFSMount(tsumufs.FSMount):
 
-  _ncl = None
-
   def __init__(self):
-    self.server_ip = tsumufs.mountSource.split(":")[0]
-    self.server_port = 2049
-    for mountOpt in tsumufs.mountOptions.split(','):
-      if mountOpt[0:5] == "port=":
-         self.server_port = int(mountOpt[5:])
-         break
+    # Try to get server infos from command line
+    try:
+      self._serverIp = tsumufs.mountSource.split(":")[0]
+
+      # Use port 2049 as default
+      self._serverPort = 2049
+      for mountOpt in str(tsumufs.mountOptions).split(','):
+        if mountOpt[0:5] == "port=":
+          self._serverPort = int(mountOpt[5:])
+          break
+
+    except AttributeError, e:
+      pass
 
     tsumufs.FSMount.__init__(self)
 
@@ -48,10 +53,39 @@ class NFSMount(tsumufs.FSMount):
       kwargs = {}
       if os.getenv("PYNFS_UID"):
         kwargs["uid"] = int(os.getenv("PYNFS_UID"))
+
       if os.getenv("PYNFS_GID"):
         kwargs["gid"] = int(os.getenv("PYNFS_GID"))
-      self._ncl = nfs4lib.create_client(self.server_ip, self.server_port, "tcp", **kwargs)
-    except socket.error, e:
+
+      nfs4lib.create_client(self._serverIp, self._serverPort, "tcp", **kwargs)
+
+    except (socket.error, TypeError), e:
         return False
     return True
+
+  def findServerInfos(self):
+    try:
+      # List nfs root to wake up nfs
+      os.listdir(tsumufs.fsMountPoint)
+
+      mountPoints = open('/proc/mounts').readlines()
+      mountPoints.reverse()
+
+      for mountPoint in mountPoints:
+        self._debug(mountPoint)
+        infos = mountPoint.split(' ')
+        if (infos[1] == tsumufs.fsMountPoint and infos[2] == tsumufs.fsType):
+
+          self._serverIp = infos[0].split(":")[0]
+
+          # Use port 2049 as default
+          self._serverPort = 2049
+          for mountOpt in infos[3].split(','):
+            if mountOpt[0:5] == "port=":
+              self._serverPort = int(mountOpt[5:])
+              break
+          break
+
+    except (OSError, IOError), e:
+      pass
 

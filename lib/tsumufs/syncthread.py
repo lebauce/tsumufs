@@ -446,7 +446,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
         while (not tsumufs.fsMount.fsMountCheckOK()
                and not tsumufs.unmounted.isSet()):
-          self._debug('NFS unavailable')
+          self._debug('FS unavailable')
 
           if not tsumufs.forceDisconnect.isSet():
             self._debug('Trying to mount fs')

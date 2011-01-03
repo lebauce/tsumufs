@@ -71,22 +71,23 @@ rootUID      = 0
 rootGID      = 0
 rootMode     = 0555
 
-dbName       = "tsumufs"
+dbName       = 'tsumufs'
 dbRemote     = None
 
-fsBaseDir    = None
-fsMountPoint = None
-fsMountCmd   = None
-fsUnmountCmd = None
-fsMount      = None
-fsType       = None
+fsBaseDir     = '/var/lib/tsumufs/fs'
+fsMountPoint  = None
+fsMountCmd    = None
+fsUnmountCmd  = None
+fsMount       = None
+fsType        = 'nfs4'
+fsMountMethod = 'default'
 
 cacheBaseDir = '/var/cache/tsumufs'
 cacheSpecDir = '/var/lib/tsumufs/cachespec'
 cachePoint   = None
 cacheManager = None
 
-viewsPoint = ""
+viewsPoint = ''
 viewsManager = None
 
 conflictDir  = '/.tsumufs-conflicts'
