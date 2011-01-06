@@ -89,12 +89,12 @@ class FileSystemOverlay(tsumufs.Debuggable):
     self._couchedLocal._get = self._get
 
     self._localRevisions = DocumentHelper(CachedRevisionDocument, tsumufs.dbName,
-                                           batch=True)
+                                          batch=True)
 
     # Raise continuous replication from server to local
     try:
-      self._couchedLocal.doc_helper.replicate(
-        "http://%s/%s" % (tsumufs.dbRemote, tsumufs.dbName), reverse=True, continuous=True)
+      self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote, spnego=True,
+                                              reverse=True, continuous=True)
 
     except tsumufs.DocumentException, e:
       self._debug('Unable to replicate changes from remote couchdb: %s'
@@ -234,8 +234,7 @@ class FileSystemOverlay(tsumufs.Debuggable):
 
           try:
             self._debug('Replicating %d documents: %s' % (len(doc_ids), ", ".join(doc_ids)))
-            self._couchedLocal.doc_helper.replicate("http://%s/%s" %
-                                                    (tsumufs.dbRemote, tsumufs.dbName),
+            self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote, spnego=True,
                                                     doc_ids=doc_ids)
           except tsumufs.DocumentException, e:
             self._debug('Unable to replicate changes to remote db: %s'
@@ -353,7 +352,7 @@ class FileSystemOverlay(tsumufs.Debuggable):
               # the document deletion. Only the full replication handle it,
               # we need to have a look on replication of sequence numbers.
               remote = tsumufs.DocumentHelper(tsumufs.SyncDocument, tsumufs.dbName,
-                                              *tsumufs.dbRemote.split(':'))
+                                              tsumufs.dbRemote, spnego=True)
 
               self._debug('Deleting document %s on %s' % (path, tsumufs.dbRemote))
               remote.delete(remote.by_path(key=path, pk=True))
@@ -397,8 +396,7 @@ class FileSystemOverlay(tsumufs.Debuggable):
 
             try:
               self._debug('Replicating %d documents: %s' % (len(doc_ids), ", ".join(doc_ids)))
-              self._couchedLocal.doc_helper.replicate("http://%s/%s" %
-                                                      (tsumufs.dbRemote, tsumufs.dbName),
+              self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote, spnego=True,
                                                       doc_ids=doc_ids)
             except tsumufs.DocumentException, e:
               self._debug('Unable to replicate changes to remote db: %s'
