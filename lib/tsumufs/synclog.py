@@ -477,7 +477,7 @@ class SyncLog(tsumufs.Debuggable):
             # the document deletion. Only the full replication handle it,
             # we need to have a look on replication of sequence numbers.
             remote = tsumufs.DocumentHelper(tsumufs.SyncDocument, tsumufs.dbName,
-                                            tsumufs.dbRemote, spnego=True)
+                                            tsumufs.dbRemote, spnego=tsumufs.spnego)
 
             self._debug('Deleting document %s' % (syncitem.id))
             remote.delete(remote.by_path(key=syncitem.filename, pk=True))
@@ -517,7 +517,7 @@ class SyncLog(tsumufs.Debuggable):
 
           try:
             self._debug('Replicating %d documents: %s' % (len(docs), ", ".join(docs)))
-            self._syncDocuments.replicate(tsumufs.dbName, tsumufs.dbRemote, spnego=True,
+            self._syncDocuments.replicate(tsumufs.dbName, tsumufs.dbRemote, spnego=tsumufs.spnego,
                                           doc_ids=docs)
 
           except tsumufs.DocumentException, e:

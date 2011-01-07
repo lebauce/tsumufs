@@ -73,6 +73,7 @@ rootMode     = 0555
 
 dbName       = 'tsumufs'
 dbRemote     = None
+spnego       = False
 
 fsBaseDir     = '/var/lib/tsumufs/fs'
 fsMountPoint  = None

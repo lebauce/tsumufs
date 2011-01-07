@@ -363,6 +363,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            callback=lambda *args: self.fuse_args.add('fsname=/tmp/tsumufs-test-nfs-dir'),
                            help=('Fuse will work on bigger regions than 4Kbytes'))
 
+    self.parser.add_option('-s', '--spnego',
+                           dest='spnego',
+                           action='store_true',
+                           help='Enable SPNEGO communication for remote database. [default: %default]')
     self.parser.add_option('-d', '--debug',
                            dest='debugMode',
                            action='store_true',
@@ -426,6 +430,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('cachePoint is %s' % tsumufs.cachePoint)
     self._debug('dbName is %s' % tsumufs.dbName)
     self._debug('dbRemote is %s' % tsumufs.dbRemote)
+    self._debug('spnego is %s' % tsumufs.spnego)
     self._debug('viewsPoint is %s' % tsumufs.viewsPoint)
     self._debug('rootMode is %d' % tsumufs.rootMode)
     self._debug('rootUID is %d' % tsumufs.rootUID)
