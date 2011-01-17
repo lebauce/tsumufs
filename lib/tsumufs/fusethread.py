@@ -547,7 +547,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         # Caller just wants the size of the value.
         return len(xattr)
       else:
-        return xattr
+        return str(xattr)
 
     except KeyError, e:
       self._debug('Request for extended attribute that is not present in the '

@@ -151,6 +151,6 @@ def xattr_tags(type_, path, value=None):
 @extendedattribute('any', 'tsumufs.staredbytag.path')
 def xattr_mysharesPath(type_, path, value=None):
   if not value:
-    return os.path.join(tsumufs.mountPoint, tsumufs.viewsPoint[1:], StaredByTagView.name)
+    return str(os.path.join(tsumufs.mountPoint, tsumufs.viewsPoint[1:], StaredByTagView.name))
 
   return -errno.EOPNOTSUPP

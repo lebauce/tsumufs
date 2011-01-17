@@ -228,7 +228,7 @@ def xattr_shareParticipants(type_, path, value=None):
   if not value:
     try:
       participants = []
-      viewpath = os.path.join(os.sep, tsumufs.viewsPoint, MySharesView.name)
+      viewpath = str(os.path.join(os.sep, tsumufs.viewsPoint, MySharesView.name))
       for dirent in tsumufs.viewsManager.getDirents(viewpath):
         participantpath = os.path.join(viewpath, dirent.filename)
 
@@ -246,6 +246,6 @@ def xattr_shareParticipants(type_, path, value=None):
 @extendedattribute('any', 'tsumufs.myshares.path')
 def xattr_mysharesPath(type_, path, value=None):
   if not value:
-    return os.path.join(tsumufs.mountPoint, tsumufs.viewsPoint[1:], MySharesView.name)
+    return str(os.path.join(tsumufs.mountPoint, tsumufs.viewsPoint[1:], MySharesView.name))
 
   return -errno.EOPNOTSUPP

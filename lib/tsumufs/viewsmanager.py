@@ -80,7 +80,7 @@ class ViewsManager(tsumufs.Debuggable):
       wrapped_args = ()
 
       for arg in args:
-        if isinstance(arg, str) and self.isAnyViewPath(arg):
+        if (isinstance(arg, str) or isinstance(arg, unicode)) and self.isAnyViewPath(arg):
           x, x, relative = arg.partition(tsumufs.viewsPoint + '/')
           view = relative.split('/')[0]
           wrapped_args += (relative,)
