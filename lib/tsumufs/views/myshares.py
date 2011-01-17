@@ -233,7 +233,7 @@ def xattr_shareParticipants(type_, path, value=None):
         participantpath = os.path.join(viewpath, dirent.filename)
 
         for doc in tsumufs.viewsManager.getDirents(participantpath):
-          if tsumufs.viewManager.realFilePath(os.path.join(participantpath, doc.filename)) == path:
+          if tsumufs.viewsManager.realFilePath(os.path.join(participantpath, doc.filename)) == path:
             participants.append(dirent.filename)
             break;
 
