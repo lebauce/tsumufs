@@ -93,10 +93,13 @@ viewsManager = None
 
 conflictDir  = '/.tsumufs-conflicts'
 
-syncLog = None
-fsOverlay = None
+defaultModeMask   = 0077
+defaultCacheMode  = 0600        # readable only by the user
+checkpointTimeout = 30          # in seconds
 
-notifier = None
+syncLog   = None
+fsOverlay = None
+notifier  = None
 
 
 class EventNotifier(threading._Event):
@@ -120,9 +123,6 @@ forceDisconnect = threading.Event()
 syncPause       = EventNotifier("syncpause")
 syncWork        = EventNotifier("syncwork")
 
-defaultCacheMode = 0600         # readable only by the user
-
-checkpointTimeout = 30          # in seconds
 
 def syslogCurrentException():
   '''

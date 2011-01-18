@@ -99,6 +99,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
   def _propogateNew(self, item, change):
     fusepath = item.filename
     fspath = tsumufs.fsPathOf(fusepath)
+    cachepath = tsumufs.cachePathOf(fusepath)
 
     # Horrible hack, but it works to test for the existance of a file.
     try:
@@ -107,20 +108,21 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       if e.errno != errno.ENOENT:
         return True
 
+    document = tsumufs.fsOverlay[fusepath]
     if item.file_type != 'dir':
       if item.file_type == 'symlink':
-        os.symlink(os.readlink(tsumufs.cachePathOf(fusepath)),
-                   tsumufs.fsPathOf(fusepath))
+        os.symlink(os.readlink(cachepath), fspath)
       else:
-        shutil.copy(tsumufs.cachePathOf(fusepath),
-                    tsumufs.fsPathOf(fusepath))
+        shutil.copy(cachepath, fspath)
+      os.chmod(fspath, document.mode)
+
     else:
-      document = tsumufs.fsOverlay[fusepath]
-      os.mkdir(tsumufs.fsPathOf(fusepath), document.mode)
-      try:
-        os.chown(tsumufs.fsPathOf(fusepath), document.uid, document.gid)
-      except:
-        pass
+      os.mkdir(fspath, document.mode)
+
+    try:
+      os.chown(fspath, document.uid, document.gid)
+    except:
+      pass
 
     return False
 

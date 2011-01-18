@@ -40,11 +40,11 @@ class CacheManager(tsumufs.Debuggable):
   operations (and decaching operations) are performed here.
   '''
 
-  _fileLocks = {}          # A hash of paths to locks to serialize
-                           # access to files in the cache.
+  _fileLocks = {}           # A hash of paths to locks to serialize
+                            # access to files in the cache.
 
-  _cacheSpec = {}          # A hash of paths to bools to remember the policy of
-                           # whether files or parent directories (recursively)
+  _cacheSpec = {}           # A hash of paths to bools to remember the policy of
+                            # whether files or parent directories (recursively)
 
   @benchmark
   def __init__(self):
@@ -632,7 +632,6 @@ class CacheManager(tsumufs.Debuggable):
     try:
       opcodes = self._genCacheOpcodes(fusepath)
       self._validateCache(fusepath, opcodes)
-      realpath = self._generatePath(fusepath, opcodes)
 
       # TODO(cleanup): make the above chunk of code into a decorator for crying
       # out loud. We do this in every public method and it adds confusion. =o(

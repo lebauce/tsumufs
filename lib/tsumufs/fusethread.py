@@ -880,7 +880,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       self._debug('chmod: access granted -- chmoding')
-      if tsumufs.cacheManager.chmod(path, mode):
+      if tsumufs.cacheManager.chmod(path, mode &~ tsumufs.defaultModeMask):
         tsumufs.syncLog.addMetadataChange(path, mode=True)
 
       return 0
@@ -977,7 +977,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     tsumufs.cacheManager.access(context['uid'], os.path.dirname(path), os.W_OK|os.X_OK)
 
     try:
-      if tsumufs.cacheManager.makeNode(path, mode, dev):
+      if tsumufs.cacheManager.makeNode(path, mode &~ tsumufs.defaultModeMask, dev):
 
         if mode & stat.S_IFREG:
           tsumufs.syncLog.addNew('file', filename=path)
@@ -1010,7 +1010,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                 os.W_OK|os.X_OK)
 
     try:
-      if tsumufs.getManager(path).makeDir(path, mode, context['uid'], context['gid']):
+      if tsumufs.getManager(path).makeDir(path, mode &~ tsumufs.defaultModeMask,
+                                          context['uid'], context['gid']):
         tsumufs.syncLog.addNew('dir', filename=path)
       return 0
 
