@@ -217,11 +217,11 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
                                        region.end,
                                        data)
 
-    # Propogate truncations
+    # Propagate truncations
     if (cache_stat.st_size < fs_stat.st_size):
       tsumufs.fsMount.truncateFile(fusepath, cache_stat.st_size)
 
-    # Propogate metadatas
+    # Propagate metadatas
     modechange, uidchange, gidchange, timeschange = change.getMetaDataChanges()
     if modechange:
       os.chmod(tsumufs.fsPathOf(fusepath), document.mode)

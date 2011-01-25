@@ -1230,7 +1230,7 @@ def xattr_isDirty(type_, path, value=None):
   if value:
     return -errno.EOPNOTSUPP
 
-  if tsumufs.syncLog.isFileDirty(path):
+  if tsumufs.syncLog.isFileDirty(path, recursive=True):
     return '1'
   return '0'
 

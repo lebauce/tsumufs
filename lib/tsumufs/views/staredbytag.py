@@ -141,6 +141,39 @@ class StaredByTagView(View, tsumufs.Debuggable):
 viewClass = StaredByTagView
 
 
+@extendedattribute('file', 'tsumufs.staredbytag.tag')
+def xattr_tag(type_, path, value=None):
+  if value:
+    if tsumufs.viewsManager.isAnyViewPath(path):
+      path = tsumufs.viewsManager.realFilePath(path)
+
+    pathinview = os.path.join(os.sep, tsumufs.viewsPoint, StaredByTagView.name,
+                              value, os.path.basename(path))
+
+    try:
+      tsumufs.viewsManager.rename(path, pathinview)
+
+      return
+    except Exception, e:
+      return -e.errno
+
+  return -errno.EOPNOTSUPP
+
+@extendedattribute('file', 'tsumufs.staredbytag.untag')
+def xattr_untag(type_, path, value=None):
+  if value:
+    pathinview = os.path.join(os.sep, tsumufs.viewsPoint, StaredByTagView.name,
+                              value, os.path.basename(path))
+
+    try:
+      tsumufs.viewsManager.removeCachedFile(pathinview, removeperm=True)
+
+      return
+    except Exception, e:
+      return -e.errno
+
+  return -errno.EOPNOTSUPP
+
 @extendedattribute('file', 'tsumufs.staredbytag.tags')
 def xattr_tags(type_, path, value=None):
   if not value:

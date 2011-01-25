@@ -148,13 +148,12 @@ class MySharesView(View, Debugger):
       remote = rpc.Server(config.sync_host, KerbTransport())
       owner  = os.environ['USER'].encode('utf8')
 
-      friend_uid = unicode(os.path.basename(os.path.dirname(new)), "utf8")
+      friend_uid = os.path.basename(os.path.dirname(new))
       friend = utils.get_user_infos(uid=int(friend_uid))['login']
 
       document = self._syncDocs.by_path(key=self.overlayPath(old), pk=True)
 
-      self.debug("Sharing file %s from '%s' to '%s'"
-                  % (document.id, owner, friend))
+      self.debug("Sharing file %s from '%s' to '%s'" % (document.id, owner, friend))
 
       try:
         remote.sync.add_new_share(friend, document.id, "R")
@@ -186,8 +185,7 @@ class MySharesView(View, Debugger):
 
         document = self._syncDocs.by_path(key=self.realFilePath(path), pk=True)
 
-        self.debug("%s remove %s from the share of '%s'"
-                    % (owner, friend, document.id))
+        self.debug("%s remove %s from the share of '%s'" % (owner, friend, document.id))
 
         try:
           remote.sync.remove_participant_from_share(friend, document.id)
@@ -222,6 +220,39 @@ class MySharesView(View, Debugger):
 
 viewClass = MySharesView
 
+
+@extendedattribute('file', 'tsumufs.myshares.share')
+def xattr_tag(type_, path, value=None):
+  if value:
+    if tsumufs.viewsManager.isAnyViewPath(path):
+      path = tsumufs.viewsManager.realFilePath(path)
+
+    pathinview = os.path.join(os.sep, tsumufs.viewsPoint, MySharesView.name,
+                              value, os.path.basename(path))
+
+    try:
+      tsumufs.viewsManager.rename(path, pathinview)
+
+      return
+    except Exception, e:
+      return -e.errno
+
+  return -errno.EOPNOTSUPP
+
+@extendedattribute('file', 'tsumufs.myshares.unshare')
+def xattr_untag(type_, path, value=None):
+  if value:
+    pathinview = os.path.join(os.sep, tsumufs.viewsPoint, MySharesView.name,
+                              value, os.path.basename(path))
+
+    try:
+      tsumufs.viewsManager.removeCachedFile(pathinview, removeperm=True)
+
+      return
+    except Exception, e:
+      return -e.errno
+
+  return -errno.EOPNOTSUPP
 
 @extendedattribute('file', 'tsumufs.myshares.participants')
 def xattr_shareParticipants(type_, path, value=None):

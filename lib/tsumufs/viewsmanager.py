@@ -59,8 +59,6 @@ class ViewsManager(tsumufs.Debuggable):
     '''
     Test if it's a path to a view directory.
     '''
-
-    path.startswith(tsumufs.viewsPoint) and path != tsumufs.viewsPoint
     x, x, viewPath = path.partition(tsumufs.viewsPoint + '/')
 
     return self._views.has_key(viewPath.split('/')[0])

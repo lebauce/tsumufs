@@ -47,7 +47,7 @@ import dbus.glib
 import gtk
 
 from ufo import utils
-from ufo.database import DocumentHelper
+from ufo.database import DocumentHelper, DocumentException
 from ufo.sharing import FriendDocument, ShareDocument
 from ufo.constants import Notification, FriendshipStatus
 from ufo.notify import *
@@ -155,7 +155,7 @@ class TrayIcon(gtk.StatusIcon):
         print "Tsumufs not mounted yet !"
         time.sleep(3)
 
-    self._monitorChangesThread = MonitorChangesThread(dbname)
+    self._monitorChangesThread = MonitorChangesThread(dbname, self._fsMountPoint)
     self._monitorChangesThread.connect('notify-event', self.notifyChange)
     self._monitorChangesThread.connect('update-event', self.updateSyncMenu)
     self._monitorChangesThread.start()
@@ -417,7 +417,7 @@ class MonitorChangesThread(Thread, gobject.GObject):
                                     (gobject.TYPE_STRING,)),
                    'update-event' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE, ())  }
 
-  def __init__(self, dbname):
+  def __init__(self, dbname, overlay):
     Thread.__init__(self, name='MonitorChangesThread')
     self.__gobject_init__()
 
@@ -425,6 +425,7 @@ class MonitorChangesThread(Thread, gobject.GObject):
     self._notifification_helper = DocumentHelper(NotificationDocument, dbname)
     
     self.dbname = dbname
+    self.overlay = overlay
 
   def getNotification(self, id=None):
     if id:
@@ -444,11 +445,8 @@ class MonitorChangesThread(Thread, gobject.GObject):
 
   def _handleSyncChange(self, syncchange):
     if syncchange.type == "rename":
-      file = "%s -> %s" % (syncchange.old_fname, syncchange.new_fname)
-      name = syncchange.old_fname
-
+      name = syncchange.new_fname
     else:
-      file = syncchange.filename
       name = syncchange.filename
 
     self._changes[syncchange.id] = { 'name' : name,
@@ -474,7 +472,7 @@ class MonitorChangesThread(Thread, gobject.GObject):
 
     try:
       # Retrieve the notification type
-      subtype =  self._notifications[id].get('type')
+      subtype = self._notifications[id].get('type')
       helper = DocumentHelper(globals()[subtype + 'Notification'], self.dbname)
 
       # Instantiate the corresponding class
@@ -491,7 +489,10 @@ class MonitorChangesThread(Thread, gobject.GObject):
         getattr(notification, event).__call__()
 
       del self._notifications[id]
-      helper.delete(notification)
+      try:
+        helper.delete(notification)
+      except DocumentException, e:
+        print "Got exception while deleting notificatiuon from database, %s" % e
 
     except Exception, e:
         import sys, traceback
@@ -538,8 +539,17 @@ class MonitorChangesThread(Thread, gobject.GObject):
         # Check deleted SyncChange entries to remove them from sync menu
         if change.get('deleted'):
           if self._changes.has_key(change['id']):
+            # Workaroud to wakeup nautilus monitor on this file
+            # to update file emblem. utime with no times has effect
+            # on the document revision.
+            try:
+              os.utime(os.path.join(self.overlay, self._changes[change['id']]['name'][1:]), (0, 0))
+            except Exceptuion, e:
+              print "Got exception while utime %s, %s" % (self._changes[change['id']]['name'][1:], e)
+
             del self._changes[change['id']]
             self._update()
+
           continue
 
         document = change['doc']

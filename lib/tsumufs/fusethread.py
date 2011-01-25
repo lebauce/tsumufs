@@ -507,6 +507,9 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     try:
       return tsumufs.ExtendedAttributes.setXAttr(type_, path, name, value)
     except KeyError, e:
+      self._debug('Request for extended attribute that is not present in the '
+                  'dictionary: <%s, %s, %s>'
+                  % (repr(type_), repr(path), repr(name)))
       return -errno.EOPNOTSUPP
 
   @benchmark
@@ -1051,6 +1054,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('context: %s' % repr(context))
     self._debug('file: uid=%d, gid=%d, mode=%o' %
                 (file_stat.st_uid, file_stat.st_gid, file_stat.st_mode))
+
+    # Use 0 values as a workaroud to simulate a change on the fs
+    # without updating any document revision.
+    if times == (0, 0):
+      return 0
 
     try:
       if tsumufs.cacheManager.utime(path, times):

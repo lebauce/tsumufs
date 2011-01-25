@@ -155,7 +155,7 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.release()
 
   @benchmark
-  def isFileDirty(self, fusepath):
+  def isFileDirty(self, fusepath, recursive=False):
     '''
     Check to see if the cached copy of a file is dirty.
 
@@ -178,6 +178,13 @@ class SyncLog(tsumufs.Debuggable):
       return True
 
     except tsumufs.DocumentException, e:
+      if recursive and os.path.isdir(tsumufs.cachePathOf(fusepath)):
+        try:
+          self._syncChanges.by_dir_prefix(key=fusepath, pk=True)
+          return True
+        except tsumufs.DocumentException, e:
+          pass
+
       return False
 
     finally:
