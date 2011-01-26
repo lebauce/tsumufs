@@ -107,8 +107,13 @@ class StaredByTagView(View, tsumufs.Debuggable):
     if not self.isFileLevel(new):
       View.rename(self, old, new)
 
+    tag = os.path.basename(os.path.dirname(new))
     overlaypath = self.overlayPath(old)
-    tsumufs.fsOverlay.tag(overlaypath, os.path.basename(os.path.dirname(new)))
+
+    if tag in tsumufs.fsOverlay[overlaypath].tags:
+      raise OSError(errno.EEXIST, "File already tagged with this tag.")
+
+    tsumufs.fsOverlay.tag(overlaypath, tag)
 
     self._debug('Add "tags" metadata change for %s' % overlaypath)
     tsumufs.syncLog.addMetadataChange(overlaypath)

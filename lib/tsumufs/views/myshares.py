@@ -32,7 +32,6 @@ from ufo import config
 from ufo import utils
 from ufo import errors
 from ufo.views import MySharesSyncDocument
-from ufo.sharing import ShareDocument
 from ufo.filesystem import SyncDocument
 from ufo.database import DocumentHelper, DocumentException
 from ufo.debugger import Debugger
