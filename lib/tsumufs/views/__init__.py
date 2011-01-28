@@ -172,11 +172,15 @@ class View(tsumufs.Debuggable):
     '''
 
     if self.isFileLevel(path):
-      for doc in self.getDirents(os.path.dirname(path)):
-        if doc.filename == os.path.basename(path):
-          return tsumufs.cacheManager.statFile(self.realFilePath(path))
+      if not self.bindings.has_key(path):
+        # Here we need to call getDirent as the list bindings
+        # could not contain our file path binding yet
+        for doc in self.getDirents(os.path.dirname(path)):
+          if doc.filename == os.path.basename(path):
+            break
 
-      raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
+      # Forwards to cacheManager to check the caching policy
+      return tsumufs.cacheManager.statFile(self.realFilePath(path))
 
     else:
       rootDirStats = tsumufs.cacheManager.statFile(tsumufs.viewsPoint)
