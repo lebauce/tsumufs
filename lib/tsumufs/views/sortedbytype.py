@@ -17,9 +17,11 @@
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
 import os
+import errno
 
 import tsumufs
 from tsumufs.views import View
+from tsumufs.extendedattributes import extendedattribute
 
 from ufo.views import SortedByTypeSyncDocument
 
@@ -45,4 +47,13 @@ class SortedByTypeView(View):
 
   docClass = SortedByTypeSyncDocument
 
+
 viewClass = SortedByTypeView
+
+
+@extendedattribute('any', 'tsumufs.sortedbytype.path')
+def xattr_mysharesPath(type_, path, value=None):
+  if not value:
+    return str(os.path.join(tsumufs.mountPoint, tsumufs.viewsPoint[1:], SortedByTypeView.name))
+
+  return -errno.EOPNOTSUPP

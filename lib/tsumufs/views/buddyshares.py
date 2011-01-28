@@ -20,9 +20,11 @@ import os
 import pwd
 import fuse
 import stat
+import errno
 
 import tsumufs
 from tsumufs.views import View
+from tsumufs.extendedattributes import extendedattribute
 
 from ufo import utils
 from ufo import errors
@@ -58,4 +60,13 @@ class BuddySharesView(View):
 
     return path
 
+
 viewClass = BuddySharesView
+
+
+@extendedattribute('any', 'tsumufs.buddyshares.path')
+def xattr_mysharesPath(type_, path, value=None):
+  if not value:
+    return str(os.path.join(tsumufs.mountPoint, tsumufs.viewsPoint[1:], BuddySharesView.name))
+
+  return -errno.EOPNOTSUPP
