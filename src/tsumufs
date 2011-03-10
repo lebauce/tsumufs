@@ -42,6 +42,10 @@ if development_mode == True:
 
 sys.path.insert(0,libpath)
 
+import gettext
+gettext.textdomain('tsumufs')
+gettext.install('tsumufs', unicode=1)
+
 import tsumufs
 
 

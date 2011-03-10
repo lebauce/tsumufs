@@ -26,8 +26,7 @@ from tsumufs.extendedattributes import extendedattribute
 from ufo.views import SortedByTypeSyncDocument
 
 import gettext
-gettext.install('tsumufs', 'locale', unicode=1)
-
+_ = gettext.gettext
 
 class SortedByTypeView(View):
   '''

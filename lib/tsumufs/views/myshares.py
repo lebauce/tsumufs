@@ -41,8 +41,7 @@ import xmlrpclib as rpc
 from ipalib.rpc import KerbTransport
 
 import gettext
-gettext.install('tsumufs', 'locale', unicode=1)
-
+_ = gettext.gettext
 
 class MySharesView(View, Debugger):
 

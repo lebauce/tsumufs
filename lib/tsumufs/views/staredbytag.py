@@ -29,8 +29,7 @@ from ufo.database import DocumentHelper
 from ufo.views import TaggedSyncDocument
 
 import gettext
-gettext.install('tsumufs', 'locale', unicode=1)
-
+_ = gettext.gettext
 
 class StaredByTagView(View, tsumufs.Debuggable):
   '''
