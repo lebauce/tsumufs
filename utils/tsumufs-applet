@@ -60,7 +60,8 @@ gobject.threads_init()
 dbus.glib.init_threads()
 
 import gettext
-gettext.install('tsumufs-applet', 'locale', unicode=1) 
+gettext.textdomain('tsumufs')
+_ = gettext.gettext
 
 import xmlrpclib as rpc
 from ipalib.rpc import KerbTransport
