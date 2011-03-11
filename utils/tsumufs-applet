@@ -311,7 +311,7 @@ class TrayIcon(gtk.StatusIcon):
         del widget
 
       except Exception, e:
-        self._notifyError(_("Error while responding the invitation ('%s', %s)")
+        self._notifyError(_("An error has occurred ('%s', %s)")
                           % (event, str(e)))
 
   def _notifyError(self, message):

@@ -6,60 +6,74 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TsumuFS 0.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2010-12-23 15:22+0100\n"
-"PO-Revision-Date: 2010-12-23 15:23+0100\n"
-"Last-Translator: Bob <sylvain.baubeau@agorabox.org>\n"
+"POT-Creation-Date: 2011-03-11 16:59+0100\n"
+"PO-Revision-Date: 2011-03-11 16:59+0100\n"
+"Last-Translator: Sylvain Baubeau <sylvain.baubeau@agorabox.org>\n"
 "Language-Team: French <>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: ../utils/tsumufs-applet:89
+#: ../utils/tsumufs-applet:97
 msgid "Synchronization and file sharing notifications"
 msgstr "Synchronisation et partage de fichiers"
 
-#: ../utils/tsumufs-applet:94 ../utils/tsumufs-applet:143
+#: ../utils/tsumufs-applet:102
+#: ../utils/tsumufs-applet:179
 msgid "Disconnected"
 msgstr "Déconnecté"
 
-#: ../utils/tsumufs-applet:101
+#: ../utils/tsumufs-applet:109
 msgid "Pause synchronization"
 msgstr "Mettre la synchronisation en pause"
 
-#: ../utils/tsumufs-applet:109
+#: ../utils/tsumufs-applet:117
 msgid "Files not synchronized"
 msgstr "Fichiers en cours de synchronisation"
 
-#: ../utils/tsumufs-applet:140
+#: ../utils/tsumufs-applet:128
+msgid "Received messages"
+msgstr "Messages reçus"
+
+#: ../utils/tsumufs-applet:176
 msgid "Unavailable"
 msgstr "Indisponible"
 
-#: ../utils/tsumufs-applet:146
+#: ../utils/tsumufs-applet:182
 msgid "Paused"
 msgstr "En pause"
 
-#: ../utils/tsumufs-applet:149
+#: ../utils/tsumufs-applet:185
 msgid "Synchronizing"
 msgstr "En cours de synchronisation"
 
-#: ../utils/tsumufs-applet:152
+#: ../utils/tsumufs-applet:188
 msgid "Connected"
 msgstr "Connecté"
 
-#: ../lib/tsumufs/views/sortedbytype.py:42
+#: ../utils/tsumufs-applet:314
+#, c-format
+msgid "An error has occurred ('%s', %s)"
+msgstr "Une erreur est survenue ('%s', %s)"
+
+#: ../utils/tsumufs-applet:318
+msgid "Error"
+msgstr "Erreur"
+
+#: ../lib/tsumufs/views/sortedbytype.py:43
 msgid "Sorted by type"
 msgstr "Classement par type"
 
-#: ../lib/tsumufs/views/staredbytag.py:53
+#: ../lib/tsumufs/views/staredbytag.py:52
 msgid "Stared by tag"
 msgstr "Mes favoris"
 
-#: ../lib/tsumufs/views/myshares.py:50
+#: ../lib/tsumufs/views/myshares.py:48
 msgid "My shares"
 msgstr "Mes partages"
 
-#: ../lib/tsumufs/views/buddyshares.py:40
+#: ../lib/tsumufs/views/buddyshares.py:41
 msgid "Buddy shares"
 msgstr "Mes amis"
 
