@@ -275,11 +275,11 @@ class TrayIcon(gtk.StatusIcon):
 
     # Add a generic action 'Ok' when no action defined
     if not desc['actions']:
-      desc['actions'] = { 'none' : _('Ok') }
+      desc['actions'] = { 'none' : _("Ok") }
 
     # Add some actions specific to the UFO distro client
     if desc['type'] == 'NewShare':
-      desc['actions']['proceed-pending-shares'] = _('Open containing folder...')
+      desc['actions']['proceed-pending-shares'] = _("Open containing folder...")
 
     # Connect actions to the callback
     for action in desc['actions']:
@@ -340,13 +340,13 @@ class TrayIcon(gtk.StatusIcon):
 
   def _notifyConnectedStatus(self, status):
     if status:
-      title = _('Connected to server')
-      body = _('Successfully logged in to the synchronization server.')
+      title = _("Connected to server")
+      body = _("Successfully logged in to the synchronization server.")
       uri = os.path.join(iconPathPrefix, 'ufo.png')
 
     else:
-      summary = _('Disconnected from server')
-      body = _('You have been disconnected, file synchronization stopped.')
+      summary = _("Disconnected from server")
+      body = _("You have been disconnected, file synchronization stopped.")
       uri = os.path.join(iconPathPrefix, 'ufo.png')
 
     self.notify(title, body, uri)
@@ -483,7 +483,7 @@ class MonitorChangesThread(Thread, gobject.GObject):
       # Raise some behaviors specific to the UFO distro client
       if event == 'proceed-pending-shares':
         fullname = utils.get_user_infos(notification.following)['fullname']
-        os.system('gnome-open "%s/%s/%s/%s"' % (overlay, self.dbname, _('Buddy shares'), fullname))
+        os.system('gnome-open "%s/%s/%s/%s"' % (overlay, self.dbname, _("Buddy shares"), fullname))
 
       # Raise the class method corresponding to clicked action
       elif event != 'none':

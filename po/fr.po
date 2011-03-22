@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TsumuFS 0.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2011-03-11 16:59+0100\n"
-"PO-Revision-Date: 2011-03-11 16:59+0100\n"
+"POT-Creation-Date: 2011-03-22 17:23+0100\n"
+"PO-Revision-Date: 2011-03-22 17:26+0100\n"
 "Last-Translator: Sylvain Baubeau <sylvain.baubeau@agorabox.org>\n"
 "Language-Team: French <>\n"
 "MIME-Version: 1.0\n"
@@ -52,6 +52,14 @@ msgstr "En cours de synchronisation"
 msgid "Connected"
 msgstr "Connecté"
 
+#: ../utils/tsumufs-applet:278
+msgid "Ok"
+msgstr "Ok"
+
+#: ../utils/tsumufs-applet:282
+msgid "Open containing folder..."
+msgstr "Afficher le dossier..."
+
 #: ../utils/tsumufs-applet:314
 #, c-format
 msgid "An error has occurred ('%s', %s)"
@@ -60,6 +68,27 @@ msgstr "Une erreur est survenue ('%s', %s)"
 #: ../utils/tsumufs-applet:318
 msgid "Error"
 msgstr "Erreur"
+
+#: ../utils/tsumufs-applet:343
+msgid "Connected to server"
+msgstr "Vous êtes connecté !"
+
+#: ../utils/tsumufs-applet:344
+msgid "Successfully logged in to the synchronization server."
+msgstr "Vous êtes connecté au service de synchronisation de fichiers."
+
+#: ../utils/tsumufs-applet:348
+msgid "Disconnected from server"
+msgstr "Vous avez été déconnecté du serveur"
+
+#: ../utils/tsumufs-applet:349
+msgid "You have been disconnected, file synchronization stopped."
+msgstr "Vous avez été déconnecté, les transferts en cours sont mis en pause."
+
+#: ../utils/tsumufs-applet:486
+#: ../lib/tsumufs/views/buddyshares.py:41
+msgid "Buddy shares"
+msgstr "Mes amis"
 
 #: ../lib/tsumufs/views/sortedbytype.py:43
 msgid "Sorted by type"
@@ -72,10 +101,6 @@ msgstr "Mes favoris"
 #: ../lib/tsumufs/views/myshares.py:48
 msgid "My shares"
 msgstr "Mes partages"
-
-#: ../lib/tsumufs/views/buddyshares.py:41
-msgid "Buddy shares"
-msgstr "Mes amis"
 
 #~ msgid "No files queued"
 #~ msgstr "Aucun fichier dans la file"
