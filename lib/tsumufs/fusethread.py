@@ -32,6 +32,11 @@ import tsumufs
 from extendedattributes import extendedattribute
 from metrics import benchmark
 
+from ufo.database import DocumentHelper, ChangesSequenceDocument
+from tsumufs.filesystemoverlay import CachedRevisionDocument
+from tsumufs.dataregion import DataRegionDocument
+from tsumufs.syncitem import SyncChangeDocument
+from tsumufs.inodechange import FileChangeDocument
 
 class FuseThread(tsumufs.Debuggable, Fuse):
   '''
@@ -58,6 +63,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     Basic setup is done in here, such as instanciation of new objects
     and the startup of threads.
     '''
+
+    # Sync the design documents for the client's datatypes
+    for doc_class in [ CachedRevisionDocument, DataRegionDocument,
+                       SyncChangeDocument, FileChangeDocument, ChangesSequenceDocument ]:
+        DocumentHelper(doc_class, tsumufs.dbName).sync()
 
     self._debug('Initializing cachemanager object.')
     try:
