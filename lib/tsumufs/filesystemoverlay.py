@@ -94,6 +94,8 @@ class FileSystemOverlay(tsumufs.Debuggable):
     # Raise continuous replication from server to local
     try:
       self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
+                                              spnego=tsumufs.spnego, reverse=True)
+      self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
                                               spnego=tsumufs.spnego, reverse=True, continuous=True)
 
     except tsumufs.DocumentException, e:
