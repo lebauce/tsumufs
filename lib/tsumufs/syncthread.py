@@ -441,7 +441,19 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       for line in traceback.extract_tb(exc_info[2]):
         self._debug('***    %s(%d) in %s: %s' % line)
 
+  def _replicationHeartbeat():
+    if tsumufs.fsOverlay.startReplication():
+      tsumufs.remoteReplication.set()
+    else:
+      tsumufs.remoteReplication.clear()
+    self.dbHeartbeat.start()
+
   def run(self):
+    # Set up a 'heartbeat' timer for the replication
+    # from the remote server to the client
+    tsumufs.fsOverlay.startReplication()
+    self.dbHeartbeat = threading.Timer(30.0, self._replicationHeartbeat)
+
     try:
       while not tsumufs.unmounted.isSet():
         self._debug('TsumuFS not unmounted yet.')
@@ -541,6 +553,13 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
     except Exception, e:
       tsumufs.syslogCurrentException()
+
+    self.dbHeartbeat.cancel()
+
+    # This fails probably because of the /couchdb in the
+    # URL of the remote CouchDB server
+    # if tsumufs.remoteReplication.isSet():
+    #   tsumufs.fsOverlay.stopReplication()
 
 
 @extendedattribute('root', 'tsumufs.pause-sync')

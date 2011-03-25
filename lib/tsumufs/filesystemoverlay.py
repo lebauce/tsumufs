@@ -79,6 +79,7 @@ class FileSystemOverlay(tsumufs.Debuggable):
                                     # access overheads.
 
   def __init__(self):
+    self.replicationTaskId = 0
     self._couchedLocal = CouchedFileSystem(tsumufs.cachePoint,
                                            tsumufs.dbName,
                                            db_metadatas=True)
@@ -91,21 +92,39 @@ class FileSystemOverlay(tsumufs.Debuggable):
     self._localRevisions = DocumentHelper(CachedRevisionDocument, tsumufs.dbName,
                                           batch=True)
 
-    # Raise continuous replication from server to local
+  def __str__(self):
+    return ('<FileSystemOverlay %d cached metadatas, %s cached revisions, : %s, %s >'
+            % (len(self._cachedMetaDatas), len(self._cachedRevisions),
+               self._cachedMetaDatas, self._cachedRevisions))
+
+  def startReplication(self):
+    '''
+    Start the replication from the remote database to the client.
+    Starting an already running replication just returns the id
+    of the existing task.
+    If the connection to the remote CouchDB closes, the tasks stays
+    alive and replication will resume when the server comes back.
+    '''
     try:
-      self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
-                                              spnego=tsumufs.spnego, reverse=True)
-      self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
-                                              spnego=tsumufs.spnego, reverse=True, continuous=True)
+      result = self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
+                                                       spnego=tsumufs.spnego, reverse=True, continuous=True,
+                                                       filter="replication/nodesigndocs")
+      self.replicationTaskId = result["_local_id"]
+      return self.replicationTaskId
 
     except tsumufs.DocumentException, e:
       self._debug('Unable to replicate changes from remote couchdb: %s'
                   % str(e))
 
-  def __str__(self):
-    return ('<FileSystemOverlay %d cached metadatas, %s cached revisions, : %s, %s >'
-            % (len(self._cachedMetaDatas), len(self._cachedRevisions),
-               self._cachedMetaDatas, self._cachedRevisions))
+  def stopReplication(self):
+    if self.replicationTaskId:
+      try:
+        self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
+                                                spnego=tsumufs.spnego, reverse=True, continuous=True,
+                                                cancel=True)
+        self.replicationTaskId = 0
+      except:
+        self._debug("Unable to stop replication task %s" % self.replicationTaskId)
 
   def checkpoint(self):
     '''

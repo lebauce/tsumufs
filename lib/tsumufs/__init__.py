@@ -117,11 +117,12 @@ class EventNotifier(threading._Event):
     notifier.notify(self.type, True)
 
 
-unmounted       = EventNotifier("unmounted")
-fsAvailable     = EventNotifier("connection")
-forceDisconnect = threading.Event()
-syncPause       = EventNotifier("syncpause")
-syncWork        = EventNotifier("syncwork")
+unmounted         = EventNotifier("unmounted")
+fsAvailable       = EventNotifier("connection")
+syncPause         = EventNotifier("syncpause")
+syncWork          = EventNotifier("syncwork")
+forceDisconnect   = threading.Event()
+remoteReplication = threading.Event()
 
 
 def syslogCurrentException():
