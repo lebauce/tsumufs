@@ -32,11 +32,16 @@ import tsumufs
 from extendedattributes import extendedattribute
 from metrics import benchmark
 
-from ufo.database import DocumentHelper, ChangesSequenceDocument
+from couchdb.mapping import Document, DictField, TextField, Mapping
+from ufo.database import DocumentHelper, ChangesSequenceDocument, ChangesFiltersDocument, ReplicationFiltersDocument
 from tsumufs.filesystemoverlay import CachedRevisionDocument
 from tsumufs.dataregion import DataRegionDocument
 from tsumufs.syncitem import SyncChangeDocument
 from tsumufs.inodechange import FileChangeDocument
+from ufo.sharing import ShareDocument, FriendDocument
+from ufo.filesystem import SyncDocument
+from ufo.notify import NotificationDocument
+from ufo.views import SortedByTypeSyncDocument, BuddySharesSyncDocument, MySharesSyncDocument, TaggedSyncDocument
 
 class FuseThread(tsumufs.Debuggable, Fuse):
   '''
@@ -64,10 +69,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     and the startup of threads.
     '''
 
-    # Sync the design documents for the client's datatypes
-    for doc_class in [ CachedRevisionDocument, DataRegionDocument,
-                       SyncChangeDocument, FileChangeDocument, ChangesSequenceDocument ]:
-        DocumentHelper(doc_class, tsumufs.dbName).sync()
+    self._debug('Creating design documents')
+    self.createDesignDocuments()
 
     self._debug('Initializing cachemanager object.')
     try:
@@ -198,6 +201,27 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._syncThread.start()
 
     self._debug('fsinit complete.')
+
+  def createDesignDocuments(self):
+    # Sync the design documents for the client's datatypes
+    for doc_class in [ CachedRevisionDocument, DataRegionDocument, SyncChangeDocument,
+                       FileChangeDocument, ChangesSequenceDocument, ChangesSequenceDocument,
+                       SyncDocument, ShareDocument, FriendDocument, NotificationDocument,
+                       SortedByTypeSyncDocument, BuddySharesSyncDocument,
+                       MySharesSyncDocument, TaggedSyncDocument ]:
+        helper = DocumentHelper(doc_class, tsumufs.dbName)
+        helper.sync()
+
+    if not helper.database.get("_design/changes"):
+        changesfilters = ChangesFiltersDocument()
+        changesfilters._data['_id'] = "_design/changes"
+        changesfilters.store(helper.database)
+
+    helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName, tsumufs.dbRemote, spnego=tsumufs.spnego)
+    if not helper.database.get("_design/replication"):
+        repfilters = ReplicationFiltersDocument()
+        repfilters._data['_id'] = "_design/replication"
+        repfilters.store(helper.database)
 
   def main(self, args=None):
     '''

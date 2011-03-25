@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TsumuFS 0.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2011-03-22 17:23+0100\n"
+"POT-Creation-Date: 2011-03-22 17:31+0100\n"
 "PO-Revision-Date: 2011-03-22 17:26+0100\n"
 "Last-Translator: Sylvain Baubeau <sylvain.baubeau@agorabox.org>\n"
 "Language-Team: French <>\n"
@@ -19,8 +19,7 @@ msgstr ""
 msgid "Synchronization and file sharing notifications"
 msgstr "Synchronisation et partage de fichiers"
 
-#: ../utils/tsumufs-applet:102
-#: ../utils/tsumufs-applet:179
+#: ../utils/tsumufs-applet:102 ../utils/tsumufs-applet:179
 msgid "Disconnected"
 msgstr "Déconnecté"
 
@@ -85,8 +84,7 @@ msgstr "Vous avez été déconnecté du serveur"
 msgid "You have been disconnected, file synchronization stopped."
 msgstr "Vous avez été déconnecté, les transferts en cours sont mis en pause."
 
-#: ../utils/tsumufs-applet:486
-#: ../lib/tsumufs/views/buddyshares.py:41
+#: ../utils/tsumufs-applet:486 ../lib/tsumufs/views/buddyshares.py:41
 msgid "Buddy shares"
 msgstr "Mes amis"
 
