@@ -63,6 +63,9 @@ import gettext
 gettext.textdomain('tsumufs')
 _ = gettext.gettext
 
+import functools
+__ = functools.partial(gettext.dgettext, "python-ufo")
+
 import xmlrpclib as rpc
 from ipalib.rpc import KerbTransport
 
@@ -457,14 +460,20 @@ class MonitorChangesThread(Thread, gobject.GObject):
 
   def _handleNotification(self, notification):
     if not self._notifications.has_key(notification.id):
+      params = notification.params
+
+      actions = {}
+      for handler in notification.actions:
+        actions[handler] = __(notification.actions[handler])
 
       # Adding notification to notification queue
       self._notifications[notification.id] = { 'type'     : notification.subtype,
-                                               'title'    : notification.title,
-                                               'body'     : notification.body,
+                                               'title'    : __(notification.title) % params,
+                                               'body'     : __(notification.body) % params,
                                                'icon'     : os.path.join(iconPathPrefix, 'ufo.png'),
-                                               'summary'  : notification.summary,
-                                               'actions'  : notification.actions,
+                                               'summary'  : __(notification.summary) % params,
+                                               'filepath' : getattr(notification, "filepath", ""),
+                                               'actions'  : actions,
                                                'callback' : self._notificationClicked }
       self._notify(notification.id)
 
