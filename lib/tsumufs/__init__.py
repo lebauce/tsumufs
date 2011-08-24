@@ -52,7 +52,7 @@ import pynfs.nfs4lib
 from ufo.utils import *
 from ufo.filesystem import *
 
-__version__ = (0, 19)
+__version__ = (0, 20)
 
 populateDb = False
 debugMode  = False
