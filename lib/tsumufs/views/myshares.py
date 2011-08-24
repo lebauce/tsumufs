@@ -115,7 +115,7 @@ class MySharesView(View, Debugger):
                  % (owner, friend))
 
       try:
-        remote.account.invite_new_follower(friend)
+        remote.account.request_friend(friend)
       except rpc.Fault, f:
         raise utils.fault_to_exception(f)
 
@@ -130,7 +130,7 @@ class MySharesView(View, Debugger):
       raise OSError(errno.ENOENT, str(e))
 
     except Exception, e:
-      self.debug("Got exception while calling account.invite_new_follower (%s)" % str(e))
+      self.debug("Got exception while calling account.request_friend (%s)" % str(e))
       self.debug_exception()
 
       raise OSError(errno.EACCES, str(e))
@@ -162,7 +162,7 @@ class MySharesView(View, Debugger):
       raise OSError(errno.EEXIST, str(e))
 
     except Exception, e:
-      self.debug("Got exception while calling account.add_new_share (%s)" % str(e))
+      self.debug("Got exception while calling sync.add_new_share (%s)" % str(e))
       self.debug_exception()
 
       raise OSError(errno.EACCES, str(e))
@@ -201,7 +201,7 @@ class MySharesView(View, Debugger):
         self.debug("%s remove %s from its friends" % (owner, friend))
 
         try:
-          remote.account.remove_follower(friend)
+          remote.account.remove_friend(friend)
         except rpc.Fault, f:
           raise utils.fault_to_exception(f)
 

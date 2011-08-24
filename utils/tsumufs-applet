@@ -491,7 +491,7 @@ class MonitorChangesThread(Thread, gobject.GObject):
       # TODO: Move this in the TrayIcon code, as is UFO distro client specific
       # Raise some behaviors specific to the UFO distro client
       if event == 'proceed-pending-shares':
-        fullname = utils.get_user_infos(notification.following)['fullname']
+        fullname = utils.get_user_infos(notification.initiator)['fullname']
         os.system('gnome-open "%s/%s/%s/%s"' % (overlay, self.dbname, _("Buddy shares"), fullname))
 
       # Raise the class method corresponding to clicked action
