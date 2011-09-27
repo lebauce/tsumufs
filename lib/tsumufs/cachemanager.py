@@ -23,7 +23,6 @@ import stat
 import shutil
 import errno
 import stat
-import syslog
 import thread
 import threading
 import time
@@ -54,24 +53,15 @@ class CacheManager(tsumufs.Debuggable):
 
     try:
       os.stat(tsumufs.cachePoint)
+
     except OSError, e:
       if e.errno == errno.ENOENT:
         self._debug('Cache point %s was not found -- creating'
                     % tsumufs.cachePoint)
 
         try:
-          pathparts = tsumufs.cachePoint.split('/')
-          path = '/'
+          os.mkdir(tsumufs.cachePoint)
 
-          for pathpart in pathparts:
-            if pathpart == '':
-              continue
-
-            path = os.path.join(path, pathpart)
-
-            if not os.path.exists(path):
-              self._debug('Path %s doesn\'t exist -- creating.' % path)
-              os.mkdir(path)
         except OSError, e:
           self._debug('Unable to create cache point: %s (exiting)'
                       % os.strerror(e.errno))
@@ -120,7 +110,7 @@ class CacheManager(tsumufs.Debuggable):
       self._validateCache(fusepath, opcodes)
 
       if 'enoent' in opcodes:
-        raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
+        raise OSError(errno.ENOENT, fusepath, os.strerror(errno.ENOENT))
 
       self._debug('Stating %s' % fusepath)
       stats = tsumufs.fsOverlay.stat(fusepath)
