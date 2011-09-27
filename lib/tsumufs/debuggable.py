@@ -16,11 +16,25 @@
 
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
-import syslog
-import traceback
-
 import tsumufs
 
+import traceback
+import sys
+
+# Windows...
+if sys.platform != "win32":
+    from syslog import openlog, syslog, LOG_WARNING
+
+else:
+    import logging
+
+    def openlog(name):
+        logging.basicConfig(filename=name, level=logging.DEBUG)
+
+    def syslog(level, message):
+        logging.warning(message)
+
+    LOG_WARNING = 6
 
 class Debuggable(object):
   '''
@@ -80,7 +94,7 @@ class Debuggable(object):
 
     if tsumufs.debugMode:
       if not tsumufs.syslogOpen:
-        syslog.openlog(tsumufs.progName)
+        openlog(tsumufs.progName + ".log")
         tsumufs.syslogOpen = True
         self._debug('Opened syslog.')
 
@@ -95,7 +109,7 @@ class Debuggable(object):
         level = 0
 
       if tsumufs.debugLevel >= level:
-        syslog.syslog(syslog.LOG_WARNING, s)
+        syslog(LOG_WARNING, s)
 
   def _getCaller(self, backsteps=1):
     '''
