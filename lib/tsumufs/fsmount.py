@@ -20,7 +20,6 @@ import os
 import errno
 import sys
 import stat
-import syslog
 import thread
 import threading
 import dataregion

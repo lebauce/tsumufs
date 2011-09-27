@@ -23,7 +23,6 @@ import stat
 import statvfs
 import time
 import traceback
-import syslog
 
 import fuse
 from fuse import Fuse

@@ -17,7 +17,6 @@
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
 import traceback
-import syslog
 import sys
 
 import fuse
