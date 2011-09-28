@@ -17,7 +17,6 @@
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
 import os
-import posix
 
 import tsumufs
 
