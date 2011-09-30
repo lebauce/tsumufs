@@ -62,7 +62,20 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self.parseCommandLine()
 
     self._debug('Creating design documents')
-    self.createDesignDocuments()
+    try:
+        self.createDesignDocuments()
+    except:
+      exc_info = sys.exc_info()
+
+      self._debug('*** Unhandled exception occurred')
+      self._debug('***     Type: %s' % str(exc_info[0]))
+      self._debug('***    Value: %s' % str(exc_info[1]))
+      self._debug('*** Traceback:')
+
+      for line in traceback.extract_tb(exc_info[2]):
+        self._debug('***    %s(%d) in %s: %s' % line)
+
+      return False
 
     self.multithreaded = 1
 
@@ -211,6 +224,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._syncThread.start()
 
     self._debug('fsinit complete.')
+    return True
 
   def createDesignDocuments(self):
     # Sync the design documents for the client's datatypes
@@ -227,17 +241,20 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         changesfilters._data['_id'] = "_design/changes"
         changesfilters.store(helper.database)
 
-    remote_helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName, tsumufs.dbRemote, spnego=tsumufs.spnego)
-    if not remote_helper.database.get("_design/replication"):
-        repfilters = ReplicationFiltersDocument()
-        repfilters._data['_id'] = "_design/replication"
-        repfilters.store(remote_helper.database)
-
-    helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName)
-    if not helper.database.get("_design/replication"):
-        repfilters = ReplicationFiltersDocument()
-        repfilters._data['_id'] = "_design/replication"
-        repfilters.store(helper.database)
+    try:
+        remote_helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName, tsumufs.dbRemote, spnego=tsumufs.spnego)
+        if not remote_helper.database.get("_design/replication"):
+            repfilters = ReplicationFiltersDocument()
+            repfilters._data['_id'] = "_design/replication"
+            repfilters.store(remote_helper.database)
+    
+        helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName)
+        if not helper.database.get("_design/replication"):
+            repfilters = ReplicationFiltersDocument()
+            repfilters._data['_id'] = "_design/replication"
+            repfilters.store(helper.database)
+    except Exception, e:
+        self._debug('Failed to replicate design document to %s: (%s)' % (tsumufs.dbRemote, e))
 
   def main(self, args=None):
     '''
@@ -262,21 +279,30 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         tsumufs.FuseFile.__init__(self2, *args, **kwargs)
 
     self.file_class = FuseFileWrapper
-    result = Fuse.main(self, args)
-    self._debug('Fuse main event loop exited.')
 
-    self._debug('Setting event and condition states.')
-    tsumufs.unmounted.set()
+    self._debug('Trying fsinit()')
+    if self.fsinit():
+      result = Fuse.main(self, args)
 
-    self._debug('Waiting for the sync thread to finish.')
-    self._syncThread.join()
+      self._debug('Fuse main event loop exite')
 
-    self._debug('Shutdown complete.')
-    self._debug("---BEGIN-GEN-BENCHMARK-REPORT---")
-    metrics=""
-    for key in tsumufs.metrics._metrics.keys():
-      self._debug(" %s: %s " % (str(key) , str(tsumufs.metrics._metrics[key])))
-    self._debug("---END-GEN-BENCHMARK-REPORT---")
+      self._debug('Setting event and condition states.')
+      tsumufs.unmounted.set()
+
+      self._debug('Waiting for the sync thread to finish.')
+      self._syncThread.join()
+
+      self._debug('Shutdown complete.')
+      self._debug("---BEGIN-GEN-BENCHMARK-REPORT---")
+
+      metrics=""
+      for key in tsumufs.metrics._metrics.keys():
+        self._debug(" %s: %s " % (str(key) , str(tsumufs.metrics._metrics[key])))
+      self._debug("---END-GEN-BENCHMARK-REPORT---")
+
+    else:
+      self._debug('fsinit() failed...')
+      result = False
 
     return result
 
@@ -443,7 +469,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       sys.exit(1)
 
     # Pull out the mount point
-    tsumufs.mountPoint  = self.cmdline[1][0]
+    tsumufs.mountPoint = self.cmdline[1][0]
 
     # Make sure the source and point don't contain trailing slashes.
     if tsumufs.mountSource and tsumufs.mountSource[-1] == '/':
@@ -452,7 +478,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       tsumufs.mountPoint = tsumufs.mountPoint[:-1]
 
     # Make sure the mountPoint is a fully qualified pathname.
-    if tsumufs.mountPoint[0] != '/':
+    if os.path.isabs(tsumufs.mountPoint):
       tsumufs.mountPoint = os.path.join(os.getcwd(), tsumufs.mountPoint)
 
     # Make sure the viewPoint is a fully qualified pathname.
@@ -469,8 +495,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     if tsumufs.cachePoint == None:
       tsumufs.cachePoint = os.path.join(tsumufs.cacheBaseDir,
-                                        tsumufs.mountPoint.replace('/', '-'),
-                                        'cache')
+                                        tsumufs.mountPoint.replace(':' + os.sep, '').replace(os.sep, '-'))
 
     if tsumufs.auth == "webauth":
         import getpass
@@ -524,7 +549,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     except OSError, e:
       self._debug('getattr: Caught OSError: %d: %s'
                   % (e.errno, e.strerror))
-      raise
+      return -e.errno
 
     except Exception, e:
       exc_info = sys.exc_info()
@@ -817,6 +842,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     except OSError, e:
       self._debug('readdir: Caught OSError on %s: errno %d: %s'
                   % (filename, e.errno, e.strerror))
+
+      yield -e.errno
 
   @benchmark
   def unlink(self, path):
