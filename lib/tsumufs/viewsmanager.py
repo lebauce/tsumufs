@@ -28,7 +28,7 @@ from ufo.filesystem import SyncDocument
 class ViewsManager(tsumufs.Debuggable):
   '''
   Class designed to handle management of the view folders.
-  Each view folder provides a custom view of filesystem contents.
+  Each view folder provides a custom view of the filesystem contents.
 
   This manager provides all system call capabilities as the
   cache manager, in the context of virtual path defined by the
