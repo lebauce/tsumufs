@@ -16,6 +16,7 @@
 
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
+import sys
 import threading
 
 # Not the greatest thing in the world to do, but it makes things
@@ -35,8 +36,19 @@ from syncitem import *
 from mutablestat import *
 from filesystemoverlay import *
 from extendedattributes import *
-from notification import *
 from metrics import *
+
+# Temporary disable notifications on MacOs and Windows,
+# we probably need to use multiprocessing instead of dbus
+# to get a portable notification system.
+if sys.platform == "linux2":
+  from notification import Notification
+
+else:
+  class Notification(Debuggable):
+    def notify(self, type, value):
+      self._debug('Unable to notify on this operating system (%s): %s, %s'
+                  % (sys.platform, type, value))
 
 from ufo.utils import *
 from ufo.filesystem import *
