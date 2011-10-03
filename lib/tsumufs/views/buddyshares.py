@@ -17,7 +17,6 @@
 '''TsumuFS, a fs-based caching filesystem.'''
 
 import os
-import fuse
 import stat
 import errno
 
@@ -28,9 +27,6 @@ from tsumufs.extendedattributes import extendedattribute
 from ufo import utils
 from ufo import errors
 from ufo.views import BuddySharesSyncDocument
-
-import xmlrpclib as rpc
-from ipalib.rpc import KerbTransport
 
 import gettext
 _ = gettext.gettext
@@ -47,7 +43,7 @@ class BuddySharesView(View):
     View.__init__(self)
 
   def hackedPath(self, path):
-    # Replace the full name name of the provider by his uid,
+    # Replace the full name of the provider by his uid,
     # as the python-ufo BuddyShares view use uid to retrieve docs
     if path.count(os.sep) >= len(self.levels):
       dirpath = os.sep.join(path.split(os.sep)[:2])

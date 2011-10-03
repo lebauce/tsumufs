@@ -18,7 +18,6 @@
 
 import os
 import sys
-import fuse
 import stat
 import errno
 import traceback
