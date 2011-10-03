@@ -275,11 +275,11 @@ def loadViews():
   for view in os.listdir(os.path.abspath(viewsPath)):
     name, ext = os.path.splitext(view)
     if ext == '.py' and name != "__init__":
+      try:
         module = __import__("tsumufs.views." + name, fromlist=["tsumufs.views"])
+        views.append(module.viewClass())
 
-        try:
-          views.append(module.viewClass())
-        except Exception, e:
+      except Exception, e:
           pass
 
   return views
