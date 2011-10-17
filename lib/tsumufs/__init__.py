@@ -82,6 +82,7 @@ fsMountCmd    = None
 fsUnmountCmd  = None
 fsMount       = None
 fsType        = 'nfs4'
+fsName        = 'TsumuFS'
 fsMountMethod = 'default'
 
 cacheBaseDir = '/var/cache/tsumufs'

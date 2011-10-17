@@ -409,6 +409,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            default=0555,
                            help=('Set the overlay root directory mode '
                                  '[default: 0555 (r-xr-xr-x)]'))
+    self.parser.add_option(mountopt='fsname',
+                           dest='fsName',
+                           default='TsumuFS',
+                           help=('Set the name of the fuse filesystem'))
 
     self.parser.add_option('-S',
                            dest='mountSource',
@@ -505,7 +509,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     elif tsumufs.auth == "spnego":
         tsumufs.auth = auth.SPNEGOAuthenticator()
 
+    # Available on Windows(pywinfuse), MacOsX (macfuse)
+    self.fsname = tsumufs.fsName
+
     self._debug('fsType is %s' % tsumufs.fsType)
+    self._debug('fsName is %s' % tsumufs.fsName)
     self._debug('mountPoint is %s' % tsumufs.mountPoint)
     self._debug('fsMountPoint is %s' % tsumufs.fsMountPoint)
     self._debug('fsMountCmd is %s' % tsumufs.fsMountCmd)
@@ -1289,9 +1297,31 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       if tsumufs.fsAvailable.isSet():
-        return os.statvfs(tsumufs.fsMountPoint)
+        mntpoint_to_stat = tsumufs.fsMountPoint
       else:
-        return os.statvfs(tsumufs.cacheBaseDir)
+        mntpoint_to_stat = tsumufs.cacheBaseDir
+
+      if sys.platform == "win32":
+        import ctypes
+        class WinVfs():
+          pass
+
+        vfs = WinVfs()
+        free_bytes = ctypes.c_ulonglong(0)
+        total_bytes = ctypes.c_ulonglong(0)
+        ctypes.windll.kernel32.GetDiskFreeSpaceExW(ctypes.c_wchar_p(unicode(mntpoint_to_stat)),
+                                                   None,
+                                                   ctypes.pointer(total_bytes),
+                                                   ctypes.pointer(free_bytes))
+        vfs.f_bsize = 512
+        vfs.f_frsize = 512
+        vfs.f_blocks = total_bytes.value / 512
+        vfs.f_bfree = free_bytes.value / 512
+        return vfs
+
+      else:
+        return os.statvfs(mntpoint_to_stat)
+
     except OSError, e:
       self._debug('statfs: Caught OSError: errno %d: %s'
                   % (e.errno, e.strerror))
