@@ -24,6 +24,7 @@ import time
 import errno
 import exceptions
 import threading
+import new
 
 import tsumufs
 from extendedattributes import extendedattribute
@@ -42,6 +43,7 @@ class CachedRevisionDocument(UTF8Document):
   doctype  = TextField(default="CachedRevisionDocument")
   fileid   = TextField()
   revision = TextField()
+  mtime    = FloatField()
 
   @ViewField.define('cachedrevision')
   def by_fileid(doc):
@@ -66,36 +68,23 @@ class FileSystemOverlay(tsumufs.Debuggable):
   in function to the 'usefs' parameter.
   '''
 
-  _couchedLocal = None              # Couched filesystem object for read/write access
-                                    # to the cached filesystem.
-
-  _couchedRemote = None             # Couched filesystem object for read/write access
-                                    # to the remote filesystem.
-
   _localRevisions = None            # Revisions of the cached copies of documents.
-
-  _cachedMetaDatas = CacheDict(60)  # Dict to keep database docs in memory during
-  _cachedRevisions = CacheDict(60)  # a system call sequence to avoid database
-                                    # access overheads.
 
   def __init__(self):
     self.replicationTaskId = 0
+
+    # Couched filesystem object for read/write access
+    # to the cached filesystem.
     self._couchedLocal = CouchedFileSystem(tsumufs.cachePoint,
                                            tsumufs.dbName,
                                            db_metadatas=True)
-    self._couchedRemote = CouchedFileSystem(tsumufs.fsMountPoint,
-                                            tsumufs.dbName)
 
-    # Override _get method to cache documents or use cached copy
-    self._couchedLocal._get = self._get
+    # object for read/write access
+    # to the remote filesystem.
+    self.remote = tsumufs.fsMount
 
     self._localRevisions = DocumentHelper(CachedRevisionDocument, tsumufs.dbName,
                                           batch=True)
-
-  def __str__(self):
-    return ('<FileSystemOverlay %d cached metadatas, %s cached revisions, : %s, %s >'
-            % (len(self._cachedMetaDatas), len(self._cachedRevisions),
-               self._cachedMetaDatas, self._cachedRevisions))
 
   def startReplication(self):
     '''
@@ -110,6 +99,12 @@ class FileSystemOverlay(tsumufs.Debuggable):
                                                        spnego=tsumufs.spnego, reverse=True, continuous=True,
                                                        filter="replication/nodesigndocs")
       self.replicationTaskId = result["_local_id"]
+
+      result = self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
+                                                       spnego=tsumufs.spnego, continuous=True,
+                                                       filter="replication/onlymeta")
+      self.metaReplicationTaskId = result["_local_id"]
+
       return self.replicationTaskId
 
     except tsumufs.DocumentException, e:
@@ -150,10 +145,11 @@ class FileSystemOverlay(tsumufs.Debuggable):
       # Use the in-memory cached copy of the revision if exists,
       # otherwise get revision from database and cache it.
       if self._cachedRevisions.isObsolete(fileid):
-        revision = self._localRevisions.by_fileid(key=fileid, pk=True).revision
+        cached = self._localRevisions.by_fileid(key=fileid, pk=True)
+        revision, mtime = cached.revision, cached.mtime
 
-        self._debug('Caching revision in memory (%s -> %s)' % (fileid, revision))
-        self._cachedRevisions.cache(fileid, revision)
+        self._debug('Caching revision in memory (%s -> %s, %s)' % (fileid, revision, mtime))
+        self._cachedRevisions.cache(fileid, (revision, mtime))
 
       return self._cachedRevisions.get(fileid)
 
@@ -163,7 +159,7 @@ class FileSystemOverlay(tsumufs.Debuggable):
     finally:
       self._cachedRevisions.release()
 
-  def setCachedRevision(self, fileid, revision):
+  def setCachedRevision(self, fileid, revision, mtime):
     '''
     Update or create the last cached revision number of a file.
 
@@ -180,14 +176,15 @@ class FileSystemOverlay(tsumufs.Debuggable):
       try:
         cacherev = self._localRevisions.by_fileid(key=fileid, pk=True)
         cacherev.revision = revision
+        cacherev.mtime = mtime
 
         self._localRevisions.update(cacherev)
 
       except DocumentException, e:
-        self._localRevisions.create(fileid=fileid, revision=revision)
+        self._localRevisions.create(fileid=fileid, revision=revision, mtime=mtime)
 
       # Update the in-memory cached copy
-      self._cachedRevisions.cache(fileid, revision)
+      self._cachedRevisions.cache(fileid, (revision, mtime))
 
     finally:
       self._cachedRevisions.release()
@@ -217,21 +214,6 @@ class FileSystemOverlay(tsumufs.Debuggable):
     finally:
       self._cachedRevisions.release()
 
-  def cachedListDirWrapper(self, path):
-    '''
-    Wrapper method to cache in memory all documents returned
-    by a call to 'listdir' to database.
-    '''
-
-    for doc in self._couchedLocal.listdir(path):
-      try:
-        self._cachedMetaDatas.acquire()
-        self._cachedMetaDatas.cache(os.path.join(doc.dirpath, doc.filename), doc)
-      finally:
-        self._cachedMetaDatas.release()
-
-      yield doc
-
   def cachedFileOpWrapper(self, couchedfs, function, *args, **kws):
     '''
     Wrapper method to cache in memory modified document in
@@ -239,70 +221,30 @@ class FileSystemOverlay(tsumufs.Debuggable):
     revision if the update has been done in the cache.
     '''
 
-    try:
-      self._cachedMetaDatas.acquire()
+    documents = function.__call__(*args, **kws)
 
-      documents = function.__call__(*args, **kws)
+    if documents:
+      for doc in documents:
+        self.setCachedRevision(doc.id, doc.rev, doc.stats.st_mtime)
 
-      if documents:
-        for doc in documents:
-          self._cachedMetaDatas.cache(os.path.join(doc.dirpath, doc.filename), doc)
-          self.setCachedRevision(doc.id, doc.rev)
+      # If use-fs mode, replicating changes to remote database.
+      if couchedfs == self.remote:
+        doc_ids = [ doc.id for doc in documents ]
 
-        # If use-fs mode, replicating changes to remote database.
-        if couchedfs == self._couchedRemote:
-          doc_ids = [ doc.id for doc in documents ]
-
-          try:
-            self._debug('Replicating %d documents: %s' % (len(doc_ids), ", ".join(doc_ids)))
-            self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
-                                                    spnego=tsumufs.spnego, doc_ids=doc_ids)
-          except tsumufs.DocumentException, e:
-            self._debug('Unable to replicate changes to remote db: %s'
-                        % str(e))
-
-    finally:
-      self._cachedMetaDatas.release()
-
-  def _get(self, path):
-    '''
-    Wrapper method to use cached copy of document.
-    When the copy is too old, the document is acceded
-    on the databse and cached in memory.
-    '''
-
-    # The root directory does not exists in the database
-    if os.path.abspath(path) == '/':
-      return RootSyncDocument(os.lstat(tsumufs.cachePathOf(path)))
-
-    try:
-      self._cachedMetaDatas.acquire()
-
-      if self._cachedMetaDatas.isObsolete(path):
         try:
-          document = self._couchedLocal.doc_helper.by_path(key=path, pk=True)
-
-        except DocumentException, e:
-          self._cachedMetaDatas.cache(path, None)
-          raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
-
-        self._debug('Caching document in memory (%s -> %s)' % (path, document.rev))
-        self._cachedMetaDatas.cache(path, document)
-
-      if self._cachedMetaDatas.get(path):
-        return self._cachedMetaDatas.get(path)
-
-      raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
-
-    finally:
-      self._cachedMetaDatas.release()
+          self._debug('Replicating %d documents: %s' % (len(doc_ids), ", ".join(doc_ids)))
+          self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
+                                                  spnego=tsumufs.spnego, doc_ids=doc_ids)
+        except tsumufs.DocumentException, e:
+          self._debug('Unable to replicate changes to remote db: %s'
+                      % str(e))
 
   def __getitem__(self, fusepath):
     '''
     Accessor to get SyncDocument instance referenced
     by fusepath, it contains all metadatas of a file.
     '''
-    return self._couchedLocal[fusepath]
+    return self._get(fusepath)
 
   def __getattr__(self, attr):
     '''
@@ -316,146 +258,66 @@ class FileSystemOverlay(tsumufs.Debuggable):
       For each type of call to CouchedFilesytem api, some cached
       copy are created/update/removed.
 
-      This wrapper also switch from _couchedLocal to _couchedRemote
+      This wrapper also switch from _couchedLocal to remote
       according to the 'usefs' keyword, and replicate documents
       on the remote databse when necessary.
       '''
 
-      try:
-        self._cachedMetaDatas.acquire()
+      self._debug('Calling \'%s\', args %s, kws %s' % (attr, args, kws))
 
-        self._debug('Calling \'%s\', args %s, kws %s' % (attr, args, kws))
+      if ((kws.has_key('usefs') and kws.pop('usefs')) or attr in ('populate',)):
+        couchedfs = self.remote
+      else:
+        couchedfs = self._couchedLocal
 
-        if ((kws.has_key('usefs') and kws.pop('usefs')) or attr in ('populate')):
-          couchedfs = self._couchedRemote
-        else:
-          couchedfs = self._couchedLocal
+      member = getattr(couchedfs, attr)
+      op = getattr(member, "op", "read")
 
-        # Return a single element without caching
-        if attr in ('stat'):
-          return getattr(couchedfs, attr).__call__(*args, **kws)
+      # Return a CouchedFile object, and caching its document
+      if attr in ('open'):
+        path = args[0]
+        flags = args[1]
 
-        # Return a CouchedFile object, and caching its document
-        elif attr in ('open'):
-          path = args[0]
-          flags = args[1]
+        couchedfile = member(*args, **kws)
 
-          couchedfile = getattr(couchedfs, attr).__call__(*args, **kws)
+        # If it is a new file, cache in memory the new document
+        # and mark the file as cached with its revision.
+        if flags & os.O_CREAT:
+          self.setCachedRevision(couchedfile.document.id,
+                                 couchedfile.document.rev,
+                                 couchedfile.document.stats.st_mtime)
 
-          # If it is a new file, cache in memory the new document
-          # and mark the file as cached with its revision.
-          if flags & os.O_CREAT:
-            self._cachedMetaDatas.cache(path, couchedfile.document)
-            self.setCachedRevision(couchedfile.document.id, couchedfile.document.rev)
+        # Override the close method to be able to cache
+        # the updated document if the file has been modified.
+        function = couchedfile.close
+        couchedfile.close = lambda *args, **kwd: \
+                              self.cachedFileOpWrapper(couchedfs,
+                                                       function,
+                                                       *args, **kwd)
+        return couchedfile
 
-          # Override the close method to be able to cache
-          # the updated document if the file has been modified.
-          function = couchedfile.close
-          couchedfile.close = lambda *args, **kwd: \
-                                self.cachedFileOpWrapper(couchedfs,
-                                                         function,
-                                                         *args, **kwd)
-          return couchedfile
+      # Create/update some documents
+      elif op in ('update', 'create'):
+        updated = member(*args, **kws)
 
-        # Remove a document
-        elif attr in ('unlink', 'rmdir'):
-          getattr(couchedfs, attr).__call__(*args, **kws)
+        rename = False
+        for doc in updated:
+          if attr not in ('populate'):
+            # Cache the new document revision
+            self.setCachedRevision(doc.id, doc.rev, doc.stats.st_mtime)
 
-          # Invalidate the cached copy if exists
-          path = args[0]
-          if self._cachedMetaDatas.has_key(path):
-            self._cachedMetaDatas.invalidate(path)
+        return updated
 
-          # If use-fs mode, deleting manually the document on remote database.
-          if couchedfs == self._couchedRemote:
-            try:
-              # It's a pity... Replication of documents by id do not handle
-              # the document deletion. Only the full replication handle it,
-              # we need to have a look on replication of sequence numbers.
-              remote = tsumufs.DocumentHelper(tsumufs.SyncDocument, tsumufs.dbName,
-                                              tsumufs.dbRemote, spnego=tsumufs.spnego)
+      else:
+        return member(*args, **kws)
 
-              self._debug('Deleting document %s on %s' % (path, tsumufs.dbRemote))
-              remote.delete(remote.by_path(key=path, pk=True))
-
-            except tsumufs.DocumentException, e:
-              self._debug('Unable to replicate changes to remote couchdb: %s'
-                          % str(e))
-
-        # Create/update some documents
-        else:
-          updated = getattr(couchedfs, attr).__call__(*args, **kws)
-
-          rename = False
-          for doc in updated:
-            # Cache document into memory
-            self._cachedMetaDatas.cache(os.path.join(doc.dirpath, doc.filename), doc)
-
-            # Invalidate old copies if the path changed
-            if attr in ('rename'):
-              # rename(self, old, new)
-              old = args[0]
-              new = args[1]
-
-              if not rename:
-                oldkey = old
-                rename = True
-              else:
-                oldkey = os.path.join(doc.dirpath.replace(new, old, 1),
-                                      doc.filename)
-
-              if self._cachedMetaDatas.has_key(oldkey):
-                self._cachedMetaDatas.invalidate(oldkey)
-
-            if attr not in ('populate'):
-              # Cache the new document revision
-              self.setCachedRevision(doc.id, doc.rev)
-
-          # If use-fs mode, replicating changes to remote database.
-          if couchedfs == self._couchedRemote:
-            doc_ids = [ doc.id for doc in updated ]
-
-            try:
-              self._debug('Replicating %d documents: %s' % (len(doc_ids), ", ".join(doc_ids)))
-              self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
-                                                      spnego=tsumufs.spnego, doc_ids=doc_ids)
-            except tsumufs.DocumentException, e:
-              self._debug('Unable to replicate changes to remote db: %s'
-                          % str(e))
-
-      finally:
-        self._cachedMetaDatas.release()
-
-    # Yield some documents
-    if attr in ('listdir'):
-      return self.cachedListDirWrapper
-
-    elif hasattr(self._couchedLocal, attr):
+    if hasattr(self._couchedLocal, attr) and \
+         type(getattr(self._couchedLocal, attr)) == new.instancemethod:
       return cachedSysCallWrapper
 
     # Raise attribute error
     else:
       return getattr(self._couchedLocal, attr)
-
-
-class RootSyncDocument(SyncDocument):
-  '''
-  Class that represent root directory document.
-  '''
-
-  def __init__(self, stats):
-    fixedfields = { 'filename' : "/",
-                    'dirpath'  : "",
-                    'uid'      : tsumufs.rootUID,
-                    'gid'      : tsumufs.rootGID,
-                    'mode'     : tsumufs.rootMode | stat.S_IFDIR,
-                    'type'     : "application/x-directory",
-                    'stats'    : stats }
-
-    super(RootSyncDocument, self).__init__(**fixedfields)
-
-    self['_id'] = "00000000000000000000000000000000"
-    self['_rev'] = "0-0123456789abcdef0123456789abcdef"
 
 
 @extendedattribute('root', 'tsumufs.fs-overlay')
@@ -472,3 +334,4 @@ def xattr_isOwner(type_, path, value=None):
     return str(int(int(tsumufs.fsOverlay[path].uid) == int(os.getuid())))
 
   return -errno.EOPNOTSUPP
+

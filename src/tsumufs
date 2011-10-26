@@ -76,6 +76,8 @@ def main():
   server = tsumufs.FuseThread()
   server.parseCommandLine()
 
+  tsumufs.context = server.GetContext()
+
   # Install our custom exception handler so that any exceptions are
   # output to the syslog rather than to /dev/null.
   sys.excepthook = tsumufs.syslogExceptHook

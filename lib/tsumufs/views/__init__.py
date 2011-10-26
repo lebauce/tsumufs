@@ -205,6 +205,12 @@ class View(tsumufs.Debuggable):
       else:
         return rootDirStats
 
+  def getxattr(self, path, key):
+    '''
+    Default 'getxattr' system call behavior in a view.
+    '''
+    raise OSError(errno.EOPNOTSUPP, os.strerror(errno.EOPNOTSUPP))
+
   def makeDir(self, path, mode, uid, gid):
     '''
     Default 'makeDir' system call behavior in a view.

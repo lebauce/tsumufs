@@ -38,10 +38,10 @@ from tsumufs.filesystemoverlay import CachedRevisionDocument
 from tsumufs.dataregion import DataRegionDocument
 from tsumufs.syncitem import SyncChangeDocument
 from tsumufs.inodechange import FileChangeDocument
-from ufo.sharing import ShareDocument, FriendDocument
+from ufo.sharing import FriendDocument
 from ufo.filesystem import SyncDocument
 from ufo.notify import NotificationDocument
-from ufo.views import SortedByTypeSyncDocument, BuddySharesSyncDocument, MySharesSyncDocument, TaggedSyncDocument
+from ufo.views import SortedByTypeSyncDocument, BuddySharesSyncDocument, MySharesSyncDocument, FriendSyncDocument, TaggedSyncDocument
 
 class FuseThread(tsumufs.Debuggable, Fuse):
   '''
@@ -57,20 +57,13 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     '''
 
     Fuse.__init__(self, *args, **kw)
-    self.multithreaded = 1
 
-  def fsinit(self):
-    '''
-    Method callback that is called when FUSE's initial startup has
-    completed, and the initialization of our client filesystem should
-    start.
-
-    Basic setup is done in here, such as instanciation of new objects
-    and the startup of threads.
-    '''
+    self.parseCommandLine()
 
     self._debug('Creating design documents')
     self.createDesignDocuments()
+
+    self.multithreaded = 1
 
     self._debug('Initializing cachemanager object.')
     try:
@@ -119,18 +112,24 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       for line in traceback.extract_tb(exc_info[2]):
         self._debug('***    %s(%d) in %s: %s' % line)
 
-      return False
+      raise
 
     # Setup the fsMount object for both sync and mount threads to
     # access raw fs with.
     self._debug('Initializing fsMount proxy.')
     try:
       if tsumufs.fsType in ['nfs', 'nfs4']:
-          tsumufs.fsMount = tsumufs.NFSMount()
+          from nfsmount import NFSMount
+          tsumufs.fsMount = NFSMount()
       elif tsumufs.fsType == 'samba':
-          tsumufs.fsMount = tsumufs.SAMBAMount()
+          from sambamount import SAMBAMount
+          tsumufs.fsMount = SAMBAMount()
       elif tsumufs.fsType == 'sshfs':
-          tsumufs.fsMount = tsumufs.SSHFSMount()
+          from sshfsmount import SSHFSMount
+          tsumufs.fsMount = SSHFSMount()
+      elif tsumufs.fsType == 'webdav':
+          from davmount import DAVMount
+          tsumufs.fsMount = DAVMount(tsumufs.mountSource, tsumufs.spnego)
     except:
       # TODO(jtg): Erm... WHY can't we call tsumufs.syslogExceptHook here? O.o
       exc_info = sys.exc_info()
@@ -143,7 +142,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       for line in traceback.extract_tb(exc_info[2]):
         self._debug('***    %s(%d) in %s: %s' % line)
 
-      return False
+      raise
 
     self._debug('Loading SyncQueue.')
     try:
@@ -160,16 +159,14 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       for line in traceback.extract_tb(exc_info[2]):
         self._debug('***    %s(%d) in %s: %s' % line)
 
-      return False
+      raise
 
-    # Initialize our threads
-    self._debug('Initializing sync thread.')
+    self._debug('Initializing viewsmanager object.')
     try:
-      self._syncThread = tsumufs.SyncThread()
+      tsumufs.viewsManager = tsumufs.ViewsManager()
     except:
-      # TODO(jtg): Same as above... We should really fix this.
       exc_info = sys.exc_info()
-    
+
       self._debug('*** Unhandled exception occurred')
       self._debug('***     Type: %s' % str(exc_info[0]))
       self._debug('***    Value: %s' % str(exc_info[1]))
@@ -180,10 +177,22 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       return False
 
-    self._debug('Initializing viewsmanager object.')
+  def fsinit(self):
+    '''
+    Method callback that is called when FUSE's initial startup has
+    completed, and the initialization of our client filesystem should
+    start.
+
+    Basic setup is done in here, such as instanciation of new objects
+    and the startup of threads.
+    '''
+
+    # Initialize our threads
+    self._debug('Initializing sync thread.')
     try:
-      tsumufs.viewsManager = tsumufs.ViewsManager()
+      self._syncThread = tsumufs.SyncThread()
     except:
+      # TODO(jtg): Same as above... We should really fix this.
       exc_info = sys.exc_info()
 
       self._debug('*** Unhandled exception occurred')
@@ -206,8 +215,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     # Sync the design documents for the client's datatypes
     for doc_class in [ CachedRevisionDocument, DataRegionDocument, SyncChangeDocument,
                        FileChangeDocument, ChangesSequenceDocument, ChangesSequenceDocument,
-                       SyncDocument, ShareDocument, FriendDocument, NotificationDocument,
-                       SortedByTypeSyncDocument, BuddySharesSyncDocument,
+                       SyncDocument, FriendDocument, NotificationDocument,
+                       SortedByTypeSyncDocument, BuddySharesSyncDocument, FriendSyncDocument,
                        MySharesSyncDocument, TaggedSyncDocument ]:
         helper = DocumentHelper(doc_class, tsumufs.dbName)
         helper.sync()
@@ -217,7 +226,13 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         changesfilters._data['_id'] = "_design/changes"
         changesfilters.store(helper.database)
 
-    helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName, tsumufs.dbRemote, spnego=tsumufs.spnego)
+    remote_helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName, tsumufs.dbRemote, spnego=tsumufs.spnego)
+    if not remote_helper.database.get("_design/replication"):
+        repfilters = ReplicationFiltersDocument()
+        repfilters._data['_id'] = "_design/replication"
+        repfilters.store(remote_helper.database)
+
+    helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName)
     if not helper.database.get("_design/replication"):
         repfilters = ReplicationFiltersDocument()
         repfilters._data['_id'] = "_design/replication"
@@ -525,9 +540,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       None, or -EOPNOTSUPP on error.
     '''
 
-    self._debug(('opcode: setxattr | path: %s | name: %s | '
-                 'value: %s | size: %d')
-                % (path, name, value, size))
+    self._debug('opcode: setxattr | path: %s' % path)
 
     mode = tsumufs.getManager(path).statFile(path).st_mode
 
@@ -544,6 +557,61 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       self._debug('Request for extended attribute that is not present in the '
                   'dictionary: <%s, %s, %s>'
                   % (repr(type_), repr(path), repr(name)))
+
+    try:
+      context = self.GetContext()
+
+      tsumufs.cacheManager.access(context['uid'], path, os.W_OK)
+
+      if tsumufs.getManager(path).setxattr(path, name, value):
+        tsumufs.syncLog.addMetadataChange(path, xattrs=[name], acls=(name == "system.posix_acl_access"))
+
+      return 0
+
+    except Exception, e:
+      return -errno.EOPNOTSUPP
+
+  @benchmark
+  def removexattr(self, path, name):
+    '''
+    Callback that is called into when a setxattr() call is
+    performed. This removes an extended attribute, if that
+    attribute is non-readonly. If the attribute isn't a valid name, or
+    is read-only, this method returns -errno.EOPNOTSUPP.
+
+    Returns:
+      None, or -EOPNOTSUPP on error.
+    '''
+
+    self._debug('opcode: removexattr | path: %s | name: %s' % (path, name))
+
+    mode = tsumufs.getManager(path).statFile(path).st_mode
+
+    if path == '/':
+      type_ = 'root'
+    elif stat.S_ISDIR(mode):
+      type_ = 'dir'
+    else:
+      type_ = 'file'
+
+    try:
+      return tsumufs.ExtendedAttributes.removeXAttr(type_, path, name)
+    except KeyError, e:
+      self._debug('Request for extended attribute that is not present in the '
+                  'dictionary: <%s, %s, %s>'
+                  % (repr(type_), repr(path), repr(name)))
+
+    try:
+      context = self.GetContext()
+
+      tsumufs.cacheManager.access(context['uid'], path, os.W_OK)
+
+      if tsumufs.getManager(path).setxattr(path, name, None):
+        tsumufs.syncLog.addMetadataChange(path, xattrs=[name], acls=(name == "system.posix_acl_access"))
+
+        return 0
+
+    except Exception, e:
       return -errno.EOPNOTSUPP
 
   @benchmark
@@ -572,25 +640,42 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       type_ = 'file'
 
     try:
-      # Restore the real file path if the file has been acceded via
-      # a view virtual folder.
-      if tsumufs.viewsManager.isAnyViewPath(path):
-        path = tsumufs.viewsManager.realFilePath(path)
+      try:
+        # Restore the real file path if the file has been acceded via
+        # a view virtual folder.
+        if tsumufs.viewsManager.isAnyViewPath(path):
+          path = tsumufs.viewsManager.realFilePath(path)
 
-      xattr = tsumufs.ExtendedAttributes.getXAttr(type_, path, name)
-      self._debug('Got %s from xattr callback.' % str(xattr))
+        xattr = tsumufs.ExtendedAttributes.getXAttr(type_, path, name)
 
-      if size == 0:
-        # Caller just wants the size of the value.
-        return len(xattr)
-      else:
-        return str(xattr)
+        if size == 0:
+          # Caller just wants the size of the value.
+          return len(xattr)
+        else:
+          return xattr
 
-    except KeyError, e:
-      self._debug('Request for extended attribute that is not present in the '
-                  'dictionary: <%s, %s, %s>'
-                  % (repr(type_), repr(path), repr(name)))
-      return -errno.EOPNOTSUPP
+      except KeyError, e:
+        self._debug('Request for extended attribute that is not present in the '
+                    'dictionary: <%s, %s, %s>'
+                    % (repr(type_), repr(path), repr(name)))
+
+      except OSError, e:
+        return -e.errno
+
+      if name.startswith("security."):
+        return -errno.ENODATA
+
+      try:
+        return tsumufs.getManager(path).getxattr(path, name)
+      except OSError, e:
+        self._debug('getxattr: Caught OSError: errno %d: %s'
+                    % (e.errno, e.strerror))
+        return -e.errno
+
+      except KeyError, e:
+        self._debug('getxattr: Caught KeyError')
+        return -errno.ENODATA
+
 
     except Exception, e:
       exc_info = sys.exc_info()
@@ -738,8 +823,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     try:
       context = self.GetContext()
       tsumufs.getManager(os.path.dirname(path)).access(context['uid'],
-                                                    os.path.dirname(path),
-                                                    os.W_OK)
+                                                       os.path.dirname(path),
+                                                       os.W_OK)
 
       if tsumufs.getManager(path).removeCachedFile(path, removeperm=True):
         tsumufs.syncLog.addUnlink(path, 'file')

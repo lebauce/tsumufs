@@ -37,6 +37,8 @@ class FileChangeDocument(Document, tsumufs.Debuggable):
   uid   = BooleanField()
   gid   = BooleanField()
   times = BooleanField()
+  acls   = BooleanField()
+  xattrs = ListField(TextField())
 
   symlinkPath = TextField()
 
@@ -61,6 +63,10 @@ class FileChangeDocument(Document, tsumufs.Debuggable):
       rep += ' uid: %s' % self.uid
     if self.gid:
       rep += ' gid: %s' % self.gid
+    if self.acls:
+      rep += ' acls: %s' % self.acls
+    if self.xattrs:
+      rep += ' extended attributes: %s' % self.xattrs
     if self.symlinkPath:
       rep += ' symlinkPath: %s' % self.symlinkPath
 
@@ -128,7 +134,7 @@ class FileChangeDocument(Document, tsumufs.Debuggable):
     pointed to by this inode.
     '''
 
-    return self.mode, self.uid, self.gid, self.times
+    return self.mode, self.uid, self.gid, self.times, self.acls, self.xattrs
 
   def clearDataChanges(self):
     '''

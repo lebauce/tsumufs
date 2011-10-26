@@ -40,11 +40,6 @@ from extendedattributes import *
 from notification import *
 from metrics import *
 
-from fsmount import *
-from nfsmount import *
-from sambamount import *
-from sshfsmount import *
-
 from pynfs.nfs4constants import *
 from pynfs.nfs4types import *
 import pynfs.nfs4lib
@@ -153,7 +148,7 @@ def getManager(path):
   Fusepath could be a "viewpath" or a "fspath".
   According to fusepath, the corresponding manager is returned.
   '''
-  if tsumufs.viewsManager.isAnyViewPath(path):
+  if tsumufs.viewsManager and tsumufs.viewsManager.isAnyViewPath(path):
     return tsumufs.viewsManager
   else:
     return tsumufs.cacheManager

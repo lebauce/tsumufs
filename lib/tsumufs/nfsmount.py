@@ -24,12 +24,19 @@ from pynfs.nfs4constants import *
 from pynfs.nfs4types import *
 from pynfs import nfs4lib 
 
+from tsumufs.fsmount import FSMount
+from ufo.filesystem import CouchedFileSystem
+from ufo.fsbackend.nfs4 import NFS4FileSystem
+
 
 class NFSMountError(Exception):
   pass
 
 
-class NFSMount(tsumufs.FSMount):
+class NFSMount(FSMount, CouchedFileSystem):
+
+  _serverIp   = None
+  _serverPort = None
 
   def __init__(self):
     # Try to get server infos from command line
@@ -46,10 +53,15 @@ class NFSMount(tsumufs.FSMount):
     except AttributeError, e:
       pass
 
-    tsumufs.FSMount.__init__(self)
+    FSMount.__init__(self)
+    CouchedFileSystem.__init__(self, tsumufs.fsMountPoint, tsumufs.dbName,
+                               tsumufs.dbRemote, tsumufs.spnego, fstype="nfs4")
 
   def pingServerOK(self):
     try:
+      if not (self._serverIp and self._serverPort):
+        self.findServerInfos()
+
       kwargs = {}
       if os.getenv("PYNFS_UID"):
         kwargs["uid"] = int(os.getenv("PYNFS_UID"))

@@ -36,6 +36,8 @@ from ufo.filesystem import SyncDocument
 from ufo.database import DocumentHelper, DocumentException
 from ufo.debugger import Debugger
 from ufo.errors import *
+from ufo.user import user
+import ufo.acl as acl
 
 import xmlrpclib as rpc
 from ipalib.rpc import KerbTransport
@@ -106,35 +108,7 @@ class MySharesView(View, Debugger):
       if e.errno != errno.ENOENT:
         raise
 
-    try:
-      remote = rpc.Server(config.account_host, KerbTransport())
-      owner  = unicode(os.environ['USER'], "utf8")
-      friend = unicode(os.path.basename(path), "utf8")
-
-      self.debug("Sending new friend invitation from '%s' to '%s'"
-                 % (owner, friend))
-
-      try:
-        remote.account.request_friend(friend)
-      except rpc.Fault, f:
-        raise utils.fault_to_exception(f)
-
-    except (AlreadyFollowerError, PendingFollowerError), e:
-      # If 'friend' is already follower and the virtual folder of
-      # this user does not exists, this is because he is follower by
-      # no shares has been set yet, so only add an entry to the pending
-      # friend list to display the folder.
-      pass
-
-    except UserNotFoundError, e:
-      raise OSError(errno.ENOENT, str(e))
-
-    except Exception, e:
-      self.debug("Got exception while calling account.request_friend (%s)" % str(e))
-      self.debug_exception()
-
-      raise OSError(errno.EACCES, str(e))
-
+    friend = os.path.basename(path)
     self._pendingFriends.append(utils.get_user_infos(friend))
     self._fullnameBindings[friend] = utils.get_user_infos(friend)['fullname']
 
@@ -190,24 +164,6 @@ class MySharesView(View, Debugger):
         except rpc.Fault, f:
           raise utils.fault_to_exception(f)
 
-      # Here we want to remove a directory that correspond to a friend.
-      elif path.count(os.sep) == 1:
-        remote = rpc.Server(config.account_host, KerbTransport())
-        owner  = unicode(os.environ['USER'], "utf8")
-
-        friend_uid = os.path.basename(uidpath)
-        friend = utils.get_user_infos(uid=int(friend_uid))['login']
-
-        self.debug("%s remove %s from its friends" % (owner, friend))
-
-        try:
-          remote.account.remove_friend(friend)
-        except rpc.Fault, f:
-          raise utils.fault_to_exception(f)
-
-        if path.split(os.sep)[1] in self._pendingFriends:
-          self._pendingFriends.remove(self._pendingFriends)
-
       else:
         raise OSError(errno.EACCES, os.strerror(errno.EACCES))
 
@@ -216,56 +172,56 @@ class MySharesView(View, Debugger):
       raise OSError(errno.EACCES, str(e))
 
 
-viewClass = MySharesView
-
-
 @extendedattribute('file', 'tsumufs.myshares.share')
-def xattr_tag(type_, path, value=None):
-  if value:
-    if tsumufs.viewsManager.isAnyViewPath(path):
-      path = tsumufs.viewsManager.realFilePath(path)
+def xattr_share(type_, path, friend=None):
+   if tsumufs.viewsManager.isAnyViewPath(path):
+     path = tsumufs.viewsManager.realFilePath(path)
 
-    pathinview = os.path.join(os.sep, tsumufs.viewsPoint, MySharesView.name,
-                              value, os.path.basename(path))
+   try:
+     posix_acl = tsumufs.cacheManager.getxattr(path, acl.ACL_XATTR)
+   except KeyError, e:
+     current_acl = acl.ACL.from_mode(tsumufs.cacheManager.statFile(path).st_mode)
+   else:
+     current_acl = acl.ACL.from_xattr(posix_acl)
 
-    try:
-      tsumufs.viewsManager.rename(path, pathinview)
+   current_acl.append(acl.ACE(acl.ACL_USER,
+                              acl.ACL_READ,
+                              pwd.getpwnam(friend).pw_uid))
 
-      return
-    except Exception, e:
-      return -e.errno
+   tsumufs.cacheManager.setxattr(path, acl.ACL_XATTR, current_acl.to_xattr())
 
-  return -errno.EOPNOTSUPP
+   return 0
 
 @extendedattribute('file', 'tsumufs.myshares.unshare')
-def xattr_untag(type_, path, value=None):
-  if value:
-    pathinview = os.path.join(os.sep, tsumufs.viewsPoint, MySharesView.name,
-                              value, os.path.basename(path))
+def xattr_unshare(type_, path, value=None):
+   if tsumufs.viewsManager.isAnyViewPath(path):
+     path = tsumufs.viewsManager.realFilePath(path)
 
-    try:
-      tsumufs.viewsManager.removeCachedFile(pathinview, removeperm=True)
+   try:
+     posix_acl = tsumufs.cacheManager.getxattr(path, acl.ACL_XATTR)
+   except KeyError, e:
+     return errno.ENODATA
 
-      return
-    except Exception, e:
-      return -e.errno
+   current_acl = acl.ACL.from_xattr(posix_acl)
+   for i, ace in enumerate(current_acl):
+       if ace.kind & acl.ACL_USER:
+           del current_acl[i]
+           break
 
-  return -errno.EOPNOTSUPP
+   tsumufs.cacheManager.setxattr(path, acl.ACL_XATTR, current_acl.to_xattr())
+
+   return 0
 
 @extendedattribute('file', 'tsumufs.myshares.participants')
 def xattr_shareParticipants(type_, path, value=None):
+
   if not value:
     try:
       participants = []
-      viewpath = str(os.path.join(os.sep, tsumufs.viewsPoint, MySharesView.name))
-      for dirent in tsumufs.viewsManager.getDirents(viewpath):
-        participantpath = os.path.join(viewpath, dirent.filename)
-
-        for doc in tsumufs.viewsManager.getDirents(participantpath):
-          if tsumufs.viewsManager.realFilePath(os.path.join(participantpath, doc.filename)) == path:
-            participants.append(dirent.filename)
-            break;
-
+      current_acl = acl.ACL.from_xattr(tsumufs.cacheManager.getxattr(path, acl.ACL_XATTR))
+      for ace in current_acl:
+          if ace.kind & acl.ACL_USER:
+              participants.append(ace.qualifier)
       return str(",".join(participants))
     except DocumentException, e:
       return str(e)
@@ -278,3 +234,11 @@ def xattr_mysharesPath(type_, path, value=None):
     return str(os.path.join(tsumufs.mountPoint, tsumufs.viewsPoint[1:], MySharesView.name))
 
   return -errno.EOPNOTSUPP
+
+@extendedattribute('any', 'system.nfs4_acl')
+def xattr_nfs4_acl(type_, path, value=None):
+  raise OSError(errno.ENODATA, os.strerror(errno.ENODATA))
+
+
+viewClass = MySharesView
+

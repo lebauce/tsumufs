@@ -115,7 +115,7 @@ class CacheManager(tsumufs.Debuggable):
 
     try:
       opcodes = self._genCacheOpcodes(fusepath, for_stat=True)
-      self._debug(' Opcodes are: %s' % str(opcodes))
+      self._debug('Opcodes are: %s' % str(opcodes))
 
       self._validateCache(fusepath, opcodes)
 
@@ -197,7 +197,7 @@ class CacheManager(tsumufs.Debuggable):
                                       tsumufs.defaultCacheMode | stat.S_IFREG,
                                       usefs=('use-fs' in opcodes))
         else:
-          fp = tsumufs.fsOverlay.open(fusepath, flags, uid, gid, None,
+          fp = tsumufs.fsOverlay.open(fusepath, flags, uid, gid,
                                       usefs=('use-fs' in opcodes))
 
       except OSError, e:
@@ -280,7 +280,7 @@ class CacheManager(tsumufs.Debuggable):
       self.unlockFile(fusepath)
 
   @benchmark
-  def readFile(self, fusepath, offset, length, flags, mode=None):
+  def readFile(self, fusepath, offset, length, flags, mode=0700):
     '''
     Read a chunk of data from the file referred to by path.
 
@@ -536,6 +536,59 @@ class CacheManager(tsumufs.Debuggable):
       self._validateCache(fusepath, opcodes)
 
       tsumufs.fsOverlay.chown(fusepath, uid, gid, usefs=('use-fs' in opcodes))
+
+      return ('use-fs' not in opcodes)
+    finally:
+      self.unlockFile(fusepath)
+
+  @benchmark
+  def getxattr(self, fusepath, key):
+    '''
+    Return the 'key' extended attribute of 'fusepath'
+
+    This method locks the file for reading, look for the attribute
+    and unlocks the file.
+
+    Returns:
+      string
+
+    Raises:
+      OSError if there was a problem getting the extended attribute.
+    '''
+    self.lockFile(fusepath)
+
+    try:
+      opcodes = self._genCacheOpcodes(fusepath, for_stat=True)
+      self._debug(' Opcodes are: %s' % str(opcodes))
+
+      self._validateCache(fusepath, opcodes)
+
+      if 'enoent' in opcodes:
+        raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
+
+      self._debug('Looking for the "%s" extended attribute on %s' % (key, fusepath))
+      value = tsumufs.fsOverlay.getxattr(fusepath, key)
+
+      self._debug('Returning extended attribute %s.' % repr(value))
+      return value
+
+    finally:
+      self.unlockFile(fusepath)
+
+  @benchmark
+  def setxattr(self, fusepath, key, value):
+    '''
+    Set an extended attribute
+    '''
+    self.lockFile(fusepath)
+
+    try:
+      opcodes = self._genCacheOpcodes(fusepath)
+      self._validateCache(fusepath, opcodes)
+
+      if not tsumufs.fsOverlay.setxattr(fusepath, key, value, usefs=('use-fs' in opcodes)):
+        self._debug("There is no need to add an entry in the synclog")
+        return False
 
       return ('use-fs' not in opcodes)
     finally:
@@ -801,7 +854,8 @@ class CacheManager(tsumufs.Debuggable):
             stat.S_ISCHR(document.mode)  or
             stat.S_ISBLK(document.mode)):
 
-          shutil.copy(fspath, cachepath)
+          shutil.copyfileobj(tsumufs.fsMount.open(fusepath, os.O_RDONLY),
+                             cachepath)
 
         elif stat.S_ISLNK(document.mode):
           dest = os.readlink(fspath)
@@ -816,7 +870,7 @@ class CacheManager(tsumufs.Debuggable):
           #os.lchown(cachepath, curstat.st_uid, curstat.st_gid)
           #os.lutimes(cachepath, (curstat.st_atime, curstat.st_mtime))
 
-      tsumufs.fsOverlay.setCachedRevision(document.id, document.rev)
+      tsumufs.fsOverlay.setCachedRevision(document.id, document.rev, document.stats.st_mtime)
 
     finally:
       self.unlockFile(fusepath)
@@ -1093,13 +1147,13 @@ class CacheManager(tsumufs.Debuggable):
 
     try:
       document = tsumufs.fsOverlay[fusepath]
-      documentrev = document.rev
-      cachedrev   = tsumufs.fsOverlay.getCachedRevision(document.id)
+      doc_rev, doc_mtime = document.rev, document.stats.st_mtime
+      cached_rev, cached_mtime = tsumufs.fsOverlay.getCachedRevision(document.id)
 
-      self._debug('%s changed ? Document revision %s, cached revision %s.'
-                  % (fusepath, documentrev, cachedrev))
+      self._debug('%s changed ? Document revision (%s,%s), cached revision (%s,%s).'
+                  % (fusepath, doc_rev, doc_mtime, cached_rev, cached_mtime))
 
-      return cachedrev < documentrev
+      return cached_rev < doc_rev and cached_mtime != doc_mtime
 
     except OSError, e:
       if e.errno == errno.ENOENT:

@@ -42,9 +42,6 @@ class FSMount(tsumufs.Debuggable):
 
   _fileLocks = {}
 
-  _serverIp   = None
-  _serverPort = None
-
   def __init__(self):
     pass
 
@@ -88,9 +85,6 @@ class FSMount(tsumufs.Debuggable):
     Method to verify that the File System server is available and mounted
     '''
 
-    if not (self._serverIp and self._serverPort):
-      self.findServerInfos()
-
     if self.pingServerOK() and os.path.ismount(tsumufs.fsMountPoint):
       tsumufs.fsAvailable.set()
       return True
@@ -122,9 +116,7 @@ class FSMount(tsumufs.Debuggable):
       self.lockFile(filename)
 
       try:
-        fspath = tsumufs.fsPathOf(filename)
-
-        fp = open(fspath, 'r')
+        fp = self.open(filename, os.O_RDONLY)
         fp.seek(start)
         result = fp.read(end - start)
         fp.close()
@@ -172,8 +164,7 @@ class FSMount(tsumufs.Debuggable):
       self.lockFile(filename)
 
       try:
-        fspath = tsumufs.fsPathOf(filename)
-        fp = open(fspath, 'r+')
+        fp = self.open(filename, os.O_APPEND)
         fp.seek(start)
         fp.write(data)
         fp.close()
@@ -203,11 +194,7 @@ class FSMount(tsumufs.Debuggable):
       self.lockFile(fusepath)
 
       try:
-        fspath = tsumufs.fsPathOf(fusepath)
-
-        fp = open(fspath, 'r+')
-        fp.truncate(newsize)
-        fp.close()
+        self.ftruncate(fusepath, newsize)
 
       except OSError, e:
         if e.errno in (errno.EIO, errno.ESTALE):
@@ -310,3 +297,4 @@ class FSMount(tsumufs.Debuggable):
     else:
       self._debug('Unmount of file system succeeded.')
       return True
+

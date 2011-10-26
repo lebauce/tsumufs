@@ -48,7 +48,7 @@ import gtk
 
 from ufo import utils
 from ufo.database import DocumentHelper, DocumentException
-from ufo.sharing import FriendDocument, ShareDocument
+from ufo.sharing import FriendDocument
 from ufo.constants import Notification, FriendshipStatus
 from ufo.notify import *
 
@@ -460,7 +460,8 @@ class MonitorChangesThread(Thread, gobject.GObject):
 
   def _handleNotification(self, notification):
     if not self._notifications.has_key(notification.id):
-      params = notification.params
+      klass = globals()[notification.subtype + "Notification"]
+      notification = DocumentHelper(klass, self.dbname).by_id(key=notification.id, pk=True)
 
       actions = {}
       for handler in notification.actions:
@@ -468,10 +469,10 @@ class MonitorChangesThread(Thread, gobject.GObject):
 
       # Adding notification to notification queue
       self._notifications[notification.id] = { 'type'     : notification.subtype,
-                                               'title'    : __(notification.title) % params,
-                                               'body'     : __(notification.body) % params,
+                                               'title'    : __(notification.title),
+                                               'body'     : __(notification.body),
                                                'icon'     : os.path.join(iconPathPrefix, 'ufo.png'),
-                                               'summary'  : __(notification.summary) % params,
+                                               'summary'  : __(notification.summary),
                                                'filepath' : getattr(notification, "filepath", ""),
                                                'actions'  : actions,
                                                'callback' : self._notificationClicked }

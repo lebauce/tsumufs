@@ -323,7 +323,7 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.release()
 
   @benchmark
-  def addMetadataChange(self, fname, mode=False, uid=False, gid=False, times=False):
+  def addMetadataChange(self, fname, mode=False, uid=False, gid=False, times=False, acls=False, xattrs=[]):
     '''
     Metadata changes are synced automatically when there is a SyncItem change
     for the file. So all we need to do here is represent the metadata changes
@@ -343,7 +343,7 @@ class SyncLog(tsumufs.Debuggable):
         syncchange = self._appendToSyncQueue('change', filename=fname)
         filechange = self._fileChanges.create(syncchangeid=syncchange.id)
 
-      filechange.addMetaDataChange(mode=mode, uid=uid, gid=gid, times=times)
+      filechange.addMetaDataChange(mode=mode, uid=uid, gid=gid, times=times, acls=acls, xattrs=xattrs)
       self._fileChanges.update(filechange)
 
     finally:
@@ -478,58 +478,15 @@ class SyncLog(tsumufs.Debuggable):
       # Replicate the change to remote database,
       # remove the item from the synclog.
       if remove_item:
-        if syncitem.type == 'unlink':
+        if syncitem.type == 'change':
           try:
-            # It's a pity... Replication of documents by id do not handle
-            # the document deletion. Only the full replication handle it,
-            # we need to have a look on replication of sequence numbers.
-            remote = tsumufs.DocumentHelper(tsumufs.SyncDocument, tsumufs.dbName,
-                                            tsumufs.dbRemote, spnego=tsumufs.spnego)
+            change = self._fileChanges.by_syncchangeid(key=syncitem.id, pk=True)
 
-            self._debug('Deleting document %s' % (syncitem.id))
-            remote.delete(remote.by_path(key=syncitem.filename, pk=True))
+            change.clearDataChanges()
+            self._fileChanges.delete(change)
 
           except tsumufs.DocumentException, e:
-            self._debug('Unable to replicate changes to remote couchdb: %s'
-                        % str(e))
-
-        else:
-          if syncitem.type == 'change':
-            try:
-              change = self._fileChanges.by_syncchangeid(key=syncitem.id, pk=True)
-
-              change.clearDataChanges()
-              self._fileChanges.delete(change)
-
-            except tsumufs.DocumentException, e:
-              self._debug('No filechange found for %s' % syncitem.filename)
-
-            docs = [ tsumufs.fsOverlay[syncitem.filename].id ]
-
-          elif syncitem.type == 'new':
-            docs = [ tsumufs.fsOverlay[syncitem.filename].id ]
-
-          elif syncitem.type == 'rename':
-            renamed = tsumufs.fsOverlay[syncitem.new_fname]
-
-            docs = [ renamed.id ]
-            if stat.S_ISDIR(renamed.mode):
-              doc_helper = tsumufs.fsOverlay._couchedLocal.doc_helper
-              for doc in doc_helper.by_dir_prefix(key=syncitem.new_fname):
-                docs.append(doc.id)
-
-          elif syncitem.type == 'link':
-            # TODO: implements this
-            docs = []
-
-          try:
-            self._debug('Replicating %d documents: %s' % (len(docs), ", ".join(docs)))
-            self._syncDocuments.replicate(tsumufs.dbName, tsumufs.dbRemote, spnego=tsumufs.spnego,
-                                          doc_ids=docs)
-
-          except tsumufs.DocumentException, e:
-            self._debug('Unable to replicate changes to remote db: %s'
-                        % str(e))
+            self._debug('No filechange found for %s' % syncitem.filename)
 
         self._debug('Last sequence number %s' % syncitem.seq_number)
         last_seq = self._changesSeqs.by_consumer(key="tsumufs-sync-thread", pk=True)

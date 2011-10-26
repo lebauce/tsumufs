@@ -46,7 +46,7 @@ class ExtendedAttributes(tsumufs.Debuggable):
                      (type_, cls._attributeCallbacks.keys()))
 
   @classmethod
-  def setCallbackFor(cls, type_, name, set_callback, get_callback):
+  def setCallbackFor(cls, type_, name, set_callback, get_callback, remove_callback):
     cls._validateXAttrType(type_)
 
     if type_ == 'any':
@@ -56,7 +56,8 @@ class ExtendedAttributes(tsumufs.Debuggable):
 
     for type_ in types:
       cls._attributeCallbacks[type_][name] = { 'set': set_callback,
-                                               'get': get_callback }
+                                               'get': get_callback,
+                                               'remove': remove_callback }
 
   @classmethod
   def clearCallbackFor(cls, type_, name):
@@ -83,20 +84,10 @@ class ExtendedAttributes(tsumufs.Debuggable):
 
     if cls._attributeCallbacks.has_key(type_):
       callback = cls._attributeCallbacks[type_][name]['get']
-
-      try:
-        return callback.__call__(type_, path)
-      except Exception, e:
-#        result  = '*** Unhandled exception occurred\n'
-#        result += '***     Type: %s\n' % str(e.__class__)
-#        result += '***    Value: %s\n' % str(e)
-#        result += '*** Traceback:\n'
-#
-#        tb = traceback.extract_stack()
-#        for line in tb:
-#          result += '***    %s(%d) in %s: %s\n' % line
-
-        return str(e)
+      result = callback.__call__(type_, path)
+      if type(result) == int:
+        raise OSError(result)
+      return result
 
     raise KeyError('No extended attribute set for (%s, %s) pair.' %
                    (type_, name))
@@ -109,8 +100,13 @@ class ExtendedAttributes(tsumufs.Debuggable):
     if cls._attributeCallbacks.has_key(type_):
       for name in cls._attributeCallbacks[type_]:
         callback = cls._attributeCallbacks[type_][name]['get']
-        results[name] = callback.__call__(type_, path)
-
+        try:
+            result = callback.__call__(type_, path)
+            if type(result) != int:
+                results[name] = result
+        except:
+            # Do not fail because of one broken/missing attribute
+            pass
     return results
 
   @classmethod
@@ -129,7 +125,28 @@ class ExtendedAttributes(tsumufs.Debuggable):
 
     if cls._attributeCallbacks.has_key(type_):
       callback = cls._attributeCallbacks[type_][name]['set']
-      return callback.__call__(type_, path, value)
+      result = callback.__call__(type_, path, value)
+
+      if type(result) == int and result:
+          raise OSError(result)
+
+      return
+
+    raise KeyError('No extended attribute set for (%s, %s) pair.' %
+                   (type_, name))
+
+  @classmethod
+  def removeXAttr(cls, type_, path, name):
+    cls._validateXAttrType(type_)
+
+    if cls._attributeCallbacks.has_key(type_):
+      callback = cls._attributeCallbacks[type_][name]['remove']
+      result = callback.__call__(type_, path)
+
+      if type(result) == int and result:
+          raise OSError(result)
+
+      return
 
     raise KeyError('No extended attribute set for (%s, %s) pair.' %
                    (type_, name))
@@ -140,6 +157,7 @@ def extendedattribute(type_, name):
     def wrapper(__self, *args, **kwargs):
       return func(__self, *args, **kwargs)
 
-    ExtendedAttributes.setCallbackFor(type_, name, wrapper, wrapper)
+    ExtendedAttributes.setCallbackFor(type_, name, wrapper, wrapper, wrapper)
     return wrapper
   return decorator
+

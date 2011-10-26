@@ -3,3 +3,4 @@ lib/tsumufs/views/sortedbytype.py
 lib/tsumufs/views/staredbytag.py
 lib/tsumufs/views/myshares.py
 lib/tsumufs/views/buddyshares.py
+lib/tsumufs/views/friends.py

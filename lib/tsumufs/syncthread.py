@@ -24,12 +24,14 @@ import threading
 import errno
 import stat
 import traceback
-
 import fuse
 
 import tsumufs
 from extendedattributes import extendedattribute
 
+from ufo.filesystem import DocumentHelper
+from ufo.user import user
+import ufo.acl as acl
 
 CONFLICT_PREAMBLE = '''
 # New changeset at %(timestamp)d
@@ -44,6 +46,16 @@ except NameError:
 changesets
 
 '''
+
+def lockfile(func):
+  def lockfile_handle(self, item, *args, **kw):
+    try:
+      tsumufs.cacheManager.lockFile(item.filename)
+      return func(self, item, *args, **kw)
+    finally:
+      tsumufs.cacheManager.unlockFile(item.filename)
+
+  return lockfile_handle
 
 class SyncThread(tsumufs.Debuggable, threading.Thread):
   '''
@@ -96,53 +108,62 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       tsumufs.fsAvailable.clear()
       return False
 
-  def _propogateNew(self, item, change):
+  def _propagateNew(self, item, change):
     fusepath = item.filename
-    fspath = tsumufs.fsPathOf(fusepath)
     cachepath = tsumufs.cachePathOf(fusepath)
 
-    # Horrible hack, but it works to test for the existance of a file.
+    try:
+      document = tsumufs.fsOverlay[fusepath]
+      os.lstat(cachepath)
+    except OSError, e:
+      if e.errno == errno.ENOENT:
+        # The file may have been deleted while we
+        # were waiting for the lock
+        return False
+
+    # Horrible hack, but it works to test for the existence of a file.
     try:
       tsumufs.fsMount.readFileRegion(fusepath, 0, 0)
     except (OSError, IOError), e:
       if e.errno != errno.ENOENT:
         return True
 
-    document = tsumufs.fsOverlay[fusepath]
     if item.file_type != 'dir':
       if item.file_type == 'symlink':
-        os.symlink(os.readlink(cachepath), fspath)
+        tsumufs.fsMount.symlink(os.readlink(cachepath), fusepath)
       else:
-        shutil.copy(cachepath, fspath)
-      os.chmod(fspath, document.mode)
+        tsumufs.fsMount.copy(open(cachepath, "r"),
+                             fusepath, document=document)
+          
+      tsumufs.fsMount.chmod(fusepath, document.mode)
 
     else:
-      os.mkdir(fspath, document.mode)
+      tsumufs.fsMount.mkdir(fusepath, document.mode, document=document)
 
     try:
-      os.chown(fspath, document.uid, document.gid)
+      tsumufs.fsMount.chown(fusepath, document.uid, document.gid)
     except:
       pass
 
     return False
 
-  def _propogateLink(self, item, change):
+  def _propagateLink(self, item, change):
     # TODO(jtg): Add in hardlink support
 
     return False
 
-  def _propogateUnlink(self, item, change):
+  def _propagateUnlink(self, item, change):
     # TODO(conflicts): Conflict if the file type or inode have changed
     fusepath = item.filename
 
     if item.file_type != 'dir':
-      os.unlink(tsumufs.fsPathOf(fusepath))
+      tsumufs.fsMount.unlink(fusepath)
     else:
-      os.rmdir(tsumufs.fsPathOf(fusepath))
+      tsumufs.fsMount.rmdir(fusepath)
 
     return False
 
-  def _propogateChange(self, item, change):
+  def _propagateChange(self, item, change):
     # Rules:
     #   1. On conflict fs always wins.
     #   2. Loser data always appended as a list of changes in
@@ -169,9 +190,9 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
     document   = tsumufs.fsOverlay[fusepath]
     cache_stat = document.get_stats()
-    fs_stat    = os.lstat(tsumufs.fsPathOf(fusepath))
+    fs_stat    = tsumufs.fsMount.lstat(fusepath)
 
-    self._debug('Validating data hasn\'t changed on fs.')
+    self._debug('Validating data hasn\'t changed on fs. %s %s' % (fs_stat, cache_stat))
     if stat.S_IFMT(fs_stat.st_mode) != stat.S_IFMT(cache_stat.st_mode):
       self._debug('File type has completely changed -- conflicted.')
       return True
@@ -179,9 +200,10 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     else:
       # Iterate over each region, and verify the changes
       for region in change.getDataChanges():
+        self._debug('Reading region %s,%s' % (region.start, region.end))
         data = tsumufs.fsMount.readFileRegion(fusepath,
-                                               region.start,
-                                               region.end - region.start)
+                                              region.start,
+                                              region.end)
 
         if len(data) < region.end - region.start:
           data += '\x00' * ((region.end - region.start) - len(data))
@@ -194,7 +216,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
     self._debug('No conflicts detected.')
 
-    # Propogate changes
+    # propagate changes
     for region in change.getDataChanges():
       data = tsumufs.cacheManager.readFile(fusepath,
                                            region.start,
@@ -203,7 +225,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
       # Pad the region with nulls if we get a short read (EOF before the end of
       # the real file. It means we ran into a truncate issue and that the file
-      # is shorter than it was originally -- we'll propogate the truncate down
+      # is shorter than it was originally -- we'll propagate the truncate down
       # the line.
       if len(data) < region.end - region.start:
         data += '\x00' * ((region.end - region.start) - len(data))
@@ -212,30 +234,40 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
                   % (fusepath, region.start,
                      region.end, repr(data)))
 
-      tsumufs.fsMount.writeFileRegion(fusepath,
-                                       region.start,
-                                       region.end,
-                                       data)
+      target = tsumufs.fsMount.open(fusepath, os.O_RDWR)
+      target.seek(region.start)
+      target.write(data)
+      target.close()
 
     # Propagate truncations
     if (cache_stat.st_size < fs_stat.st_size):
-      tsumufs.fsMount.truncateFile(fusepath, cache_stat.st_size)
+      tsumufs.fsMount.ftruncate(fusepath, cache_stat.st_size)
 
     # Propagate metadatas
-    modechange, uidchange, gidchange, timeschange = change.getMetaDataChanges()
+    modechange, uidchange, gidchange, timeschange, acls, xattrschange = change.getMetaDataChanges()
     if modechange:
-      os.chmod(tsumufs.fsPathOf(fusepath), document.mode)
+      tsumufs.fsMount.chmod(fusepath, document.mode)
     if timeschange:
-      os.utime(tsumufs.fsPathOf(fusepath), (cache_stat.st_atime, cache_stat.st_mtime))
+      tsumufs.fsMount.utime(fusepath, (cache_stat.st_atime, cache_stat.st_mtime))
     if uidchange and gidchange:
-      os.chown(tsumufs.fsPathOf(fusepath), document.uid, document.gid)
+      tsumufs.fsMount.chown(fusepath, document.uid, document.gid)
+    if acls:
+      tsumufs.fsMount.set_acl(fusepath, document.posix_acl)
+
+      # We do not want to set the extended attribute a second time
+      xattrschange.remove("system.posix_acl_access")
+
+    for name in xattrschange:
+      try:
+        tsumufs.fsMount.setxattr(fusepath, name, document.xattrs[name])
+      except OSError, e:
+        self._debug("Failed to propagate extended attribute %s : %s" % (name, os.strerror(e.errno)))
 
     return False
 
-  def _propogateRename(self, item, change):
+  def _propagateRename(self, item, change):
     # TODO(conflicts): Verify inode numbers here
-    os.rename(tsumufs.fsPathOf(item.old_fname),
-              tsumufs.fsPathOf(item.new_fname))
+    tsumufs.fsMount.rename(item.old_fname, item.new_fname)
 
     return False
 
@@ -302,8 +334,8 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         pass
 
       if item.type == 'change':
-        # TODO(conflicts): Propogate metadata changes as well.
-        # TODO(conflicts): Propogate truncates!
+        # TODO(conflicts): propagate metadata changes as well.
+        # TODO(conflicts): propagate truncates!
 
         # Write changes to file
         self._debug('Writing changes to conflict file.')
@@ -374,7 +406,8 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
             raise
 
           self._debug('Conflict dir missing -- creating.')
-          tsumufs.cacheManager.makeDir(tsumufs.conflictDir, 0700)
+          tsumufs.cacheManager.makeDir(tsumufs.conflictDir, 0700,
+                                       tsumufs.context['uid'], tsumufs.context['gid'])
 
           self._debug('Adding to synclog.')
           tsumufs.syncLog.addNew('dir', filename=tsumufs.conflictDir)
@@ -412,34 +445,22 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     tsumufs.cacheManager.removeCachedFile(fusepath)
 
   def _handleChange(self, item, change):
-    try:
-      type_ = item.type
-      change_types = { 'new': self._propogateNew,
-                       'link': self._propogateLink,
-                       'unlink': self._propogateUnlink,
-                       'change': self._propogateChange,
-                       'rename': self._propogateRename }
+    type_ = item.type
+    change_types = { 'new': self._propagateNew,
+                     'link': self._propagateLink,
+                     'unlink': self._propagateUnlink,
+                     'change': self._propagateChange,
+                     'rename': self._propagateRename }
 
-      self._debug('Calling propogation method %s' % change_types[type_].__name__)
+    self._debug('Calling propogation method %s' % change_types[type_].__name__)
 
-      found_conflicts = change_types[type_].__call__(item, change)
+    found_conflicts = change_types[type_].__call__(item, change)
 
-      if found_conflicts:
-        self._debug('Found conflicts. Running handler.')
-        self._handleConflicts(item, change)
-      else:
-        self._debug('No conflicts detected. Merged successfully.')
-
-    except Exception, e:
-      exc_info = sys.exc_info()
-
-      self._debug('*** Unhandled exception occurred')
-      self._debug('***     Type: %s' % str(exc_info[0]))
-      self._debug('***    Value: %s' % str(exc_info[1]))
-      self._debug('*** Traceback:')
-
-      for line in traceback.extract_tb(exc_info[2]):
-        self._debug('***    %s(%d) in %s: %s' % line)
+    if found_conflicts:
+      self._debug('Found conflicts. Running handler.')
+      self._handleConflicts(item, change)
+    else:
+      self._debug('No conflicts detected. Merged successfully.')
 
   def _replicationHeartbeat():
     if tsumufs.fsOverlay.startReplication():
@@ -495,14 +516,14 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
             try:
               tsumufs.syncWork.set()
 
-              # Handle the change
-              self._debug('Handling change.')
-              self._handleChange(item, change)
-
-              # Mark the change as complete.
-              self._debug('Marking change %s as complete.' % repr(item))
-
               try:
+                # Handle the change
+                self._debug('Handling change.')
+                self._handleChange(item, change)
+
+                # Mark the change as complete.
+                self._debug('Marking change %s as complete.' % repr(item))
+
                 tsumufs.syncLog.finishedWithChange(item)
                 tsumufs.syncWork.clear()
 
@@ -517,7 +538,9 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
                 for line in traceback.extract_tb(exc_info[2]):
                   self._debug('***    %s(%d) in %s: %s' % line)
 
-            except IOError, e:
+                raise e
+
+            except Exception, e:
               self._debug('Caught an IOError in the middle of handling a change: '
                           '%s' % str(e))
 
