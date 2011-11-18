@@ -194,11 +194,10 @@ class View(tsumufs.Debuggable):
         if not document:
           raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
 
-        for attr in ('uid', 'gid'):
-          if not getattr(document, attr):
-            setattr(document, attr, getattr(rootDirStats, 'st_%s' % attr))
-
-        document.set_stats(rootDirStats)
+        # Fill the missing parts of 'stats' with the one of the root folder
+        for key in rootDirStats._keys:
+            if getattr(document.stats, key, None) == None:
+                setattr(document.stats, key, getattr(rootDirStats, key))
 
         return document.get_stats()
 
