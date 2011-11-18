@@ -38,10 +38,6 @@ from extendedattributes import *
 from notification import *
 from metrics import *
 
-from pynfs.nfs4constants import *
-from pynfs.nfs4types import *
-import pynfs.nfs4lib
-
 from ufo.utils import *
 from ufo.filesystem import *
 

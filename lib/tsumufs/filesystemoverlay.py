@@ -79,10 +79,6 @@ class FileSystemOverlay(tsumufs.Debuggable):
                                            tsumufs.dbName,
                                            db_metadatas=True)
 
-    # object for read/write access
-    # to the remote filesystem.
-    self.remote = tsumufs.fsMount
-
     self._localRevisions = DocumentHelper(CachedRevisionDocument, tsumufs.dbName,
                                           batch=True)
 
@@ -254,7 +250,7 @@ class FileSystemOverlay(tsumufs.Debuggable):
       self._debug('Calling \'%s\', args %s, kws %s' % (attr, args, kws))
 
       if ((kws.has_key('usefs') and kws.pop('usefs')) or attr in ('populate',)):
-        couchedfs = self.remote
+        couchedfs = tsumufs.fsMount
       else:
         couchedfs = self._couchedLocal
 
