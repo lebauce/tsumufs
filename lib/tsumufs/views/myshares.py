@@ -18,7 +18,6 @@
 
 import os
 import sys
-import pwd
 import fuse
 import stat
 import errno
@@ -186,7 +185,7 @@ def xattr_share(type_, path, friend=None):
 
    current_acl.append(acl.ACE(acl.ACL_USER,
                               acl.ACL_READ,
-                              pwd.getpwnam(friend).pw_uid))
+                              utils.get_user_infos(login=friend)['uid']))
 
    tsumufs.cacheManager.setxattr(path, acl.ACL_XATTR, current_acl.to_xattr())
 

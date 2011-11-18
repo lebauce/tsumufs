@@ -17,7 +17,6 @@
 '''TsumuFS, a fs-based caching filesystem.'''
 
 import os
-import pwd
 import fuse
 import stat
 import errno

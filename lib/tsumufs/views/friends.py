@@ -18,7 +18,6 @@
 
 import os
 import sys
-import pwd
 import fuse
 import stat
 import errno

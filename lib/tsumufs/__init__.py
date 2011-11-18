@@ -17,8 +17,6 @@
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
 import threading
-import pwd
-import grp
 
 # Not the greatest thing in the world to do, but it makes things
 # organizationally easier to reach. Dumping all of these classes into this file
@@ -214,12 +212,5 @@ def getGidsForUid(uid):
     Nothing.
   '''
 
-  pwent = pwd.getpwuid(uid)
-  username = pwent.pw_name
-  groups = [ pwent.pw_gid ]
+  return get_user_infos(uid=uid)['groups']
 
-  for group in grp.getgrall():
-    if username in group.gr_mem:
-      groups.append(group.gr_gid)
-
-  return groups
