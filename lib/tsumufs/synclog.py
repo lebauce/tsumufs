@@ -423,10 +423,43 @@ class SyncLog(tsumufs.Debuggable):
       if event.get('deleted'):
         continue
 
+      removed = False
       filechange = None
       syncitem   = self._syncChanges.by_id(key=event['id'], pk=True)
 
       self._debug('Syncitem retrieved from a new change; %s' % syncitem)
+
+      try:
+        # Ensure the appropriate locks are locked
+        if syncitem.type in ('new', 'link', 'unlink', 'change'):
+          tsumufs.cacheManager.lockFile(syncitem.filename)
+          tsumufs.fsMount.lockFile(syncitem.filename)
+          tsumufs.fsOverlay[syncitem.filename]
+
+        elif syncitem.type in ('rename'):
+          tsumufs.cacheManager.lockFile(syncitem.new_fname)
+          tsumufs.fsMount.lockFile(syncitem.new_fname)
+          tsumufs.cacheManager.lockFile(syncitem.old_fname)
+          tsumufs.fsMount.lockFile(syncitem.old_fname)
+          tsumufs.fsOverlay[syncitem.old_fname]
+
+        # Check that the SyncItem stills exists in the database
+        # now that locks have been taken
+        syncitem = self._syncChanges.by_id(key=event['id'], pk=True)
+
+      except OSError, err:
+        if err.errno == errno.ENOENT:
+          removed = True
+        else:
+          raise err
+
+      except DocumentException, e:
+        removed = True
+
+      if removed:
+        self._debug('Syncitem %s has been deleted since we first saw it' % syncitem)
+        self.finishedWithChange(syncitem, remove_item=False)
+        continue
 
       # Grab the associated inode changes if there are any.
       if syncitem.type == 'change':
@@ -441,17 +474,6 @@ class SyncLog(tsumufs.Debuggable):
 
         finally:
           self._lock.release()
-
-      # Ensure the appropriate locks are locked
-      if syncitem.type in ('new', 'link', 'unlink', 'change'):
-        tsumufs.cacheManager.lockFile(syncitem.filename)
-        tsumufs.fsMount.lockFile(syncitem.filename)
-
-      elif syncitem.type in ('rename'):
-        tsumufs.cacheManager.lockFile(syncitem.new_fname)
-        tsumufs.fsMount.lockFile(syncitem.new_fname)
-        tsumufs.cacheManager.lockFile(syncitem.old_fname)
-        tsumufs.fsMount.lockFile(syncitem.old_fname)
 
       syncitem.seq_number = event['seq']
       self._debug('Yielding (syncchange, filechange), seq %d: (%s,%s)'
