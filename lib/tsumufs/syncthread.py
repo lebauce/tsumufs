@@ -130,7 +130,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
     if item.file_type != 'dir':
       if item.file_type == 'symlink':
-        tsumufs.fsMount.symlink(os.readlink(cachepath), fusepath)
+        tsumufs.fsMount.symlink(os.readlink(cachepath), fusepath, document=document)
       else:
         tsumufs.fsMount.copy(open(cachepath, "r"),
                              fusepath, document=document)
