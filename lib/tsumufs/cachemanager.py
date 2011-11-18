@@ -855,7 +855,7 @@ class CacheManager(tsumufs.Debuggable):
             stat.S_ISBLK(document.mode)):
 
           shutil.copyfileobj(tsumufs.fsMount.open(fusepath, os.O_RDONLY),
-                             cachepath)
+                             open(cachepath, "w"))
 
         elif stat.S_ISLNK(document.mode):
           dest = os.readlink(fspath)
