@@ -55,7 +55,7 @@ class NFSMount(FSMount, CouchedFileSystem):
 
     FSMount.__init__(self)
     CouchedFileSystem.__init__(self, tsumufs.fsMountPoint, tsumufs.dbName,
-                               tsumufs.dbRemote, tsumufs.spnego, fstype="nfs4")
+                               tsumufs.dbRemote, auth=tsumufs.auth, fstype="nfs4")
 
   def pingServerOK(self):
     try:

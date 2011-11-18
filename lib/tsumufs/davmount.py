@@ -23,12 +23,11 @@ from ufo.fsbackend.dav import WebDAVFileSystem
  
 class DAVMount(FSMount, WebDAVFileSystem):
 
-    def __init__(self, url, spnego=False):
+    def __init__(self, url, auth=None):
         self.url = url
-        self.spnego = spnego
 
         FSMount.__init__(self)
-        WebDAVFileSystem.__init__(self, url, spnego)
+        WebDAVFileSystem.__init__(self, url, auth=auth)
 
     def pingServerOK(self):
         try:

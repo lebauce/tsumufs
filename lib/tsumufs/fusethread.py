@@ -32,6 +32,7 @@ import tsumufs
 from extendedattributes import extendedattribute
 from metrics import benchmark
 
+import ufo.auth as auth
 from couchdb.mapping import Document, DictField, TextField, Mapping
 from ufo.database import DocumentHelper, ChangesSequenceDocument, ChangesFiltersDocument, ReplicationFiltersDocument
 from tsumufs.filesystemoverlay import CachedRevisionDocument
@@ -129,7 +130,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
           tsumufs.fsMount = SSHFSMount()
       elif tsumufs.fsType == 'webdav':
           from davmount import DAVMount
-          tsumufs.fsMount = DAVMount(tsumufs.mountSource, tsumufs.spnego)
+          tsumufs.fsMount = DAVMount(tsumufs.mountSource, tsumufs.auth)
     except:
       # TODO(jtg): Erm... WHY can't we call tsumufs.syslogExceptHook here? O.o
       exc_info = sys.exc_info()
@@ -412,10 +413,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            callback=lambda *args: self.fuse_args.add('fsname=/tmp/tsumufs-test-nfs-dir'),
                            help=('Fuse will work on bigger regions than 4Kbytes'))
 
-    self.parser.add_option('-s', '--spnego',
-                           dest='spnego',
-                           action='store_true',
-                           help='Enable SPNEGO communication for remote database. [default: %default]')
+    self.parser.add_option('-t', '--auth',
+                           dest='auth',
+                           default='webauth',
+                           help='Specify authentication method for remote access. [default: %webauth]')
     self.parser.add_option('-d', '--debug',
                            dest='debugMode',
                            action='store_true',
@@ -471,6 +472,14 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                                         tsumufs.mountPoint.replace('/', '-'),
                                         'cache')
 
+    if tsumufs.auth == "webauth":
+        import getpass
+        self._debug("Getting credentials from the user")
+        tsumufs.auth = auth.WebAuthAuthenticator(getpass.getuser(), getpass.getpass())
+
+    elif tsumufs.auth == "spnego":
+        tsumufs.auth = auth.SPNEGOAuthenticator()
+
     self._debug('fsType is %s' % tsumufs.fsType)
     self._debug('mountPoint is %s' % tsumufs.mountPoint)
     self._debug('fsMountPoint is %s' % tsumufs.fsMountPoint)
@@ -479,7 +488,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('cachePoint is %s' % tsumufs.cachePoint)
     self._debug('dbName is %s' % tsumufs.dbName)
     self._debug('dbRemote is %s' % tsumufs.dbRemote)
-    self._debug('spnego is %s' % tsumufs.spnego)
+    self._debug('auth is %s' % tsumufs.auth)
     self._debug('viewsPoint is %s' % tsumufs.viewsPoint)
     self._debug('rootMode is %d' % tsumufs.rootMode)
     self._debug('rootUID is %d' % tsumufs.rootUID)

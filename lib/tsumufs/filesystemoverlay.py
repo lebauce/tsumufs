@@ -96,12 +96,12 @@ class FileSystemOverlay(tsumufs.Debuggable):
     '''
     try:
       result = self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
-                                                       spnego=tsumufs.spnego, reverse=True, continuous=True,
+                                                       auth=tsumufs.auth, reverse=True, continuous=True,
                                                        filter="replication/nodesigndocs")
       self.replicationTaskId = result["_local_id"]
 
       result = self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
-                                                       spnego=tsumufs.spnego, continuous=True,
+                                                       auth=tsumufs.auth, continuous=True,
                                                        filter="replication/onlymeta")
       self.metaReplicationTaskId = result["_local_id"]
 
@@ -115,7 +115,7 @@ class FileSystemOverlay(tsumufs.Debuggable):
     if self.replicationTaskId:
       try:
         self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
-                                                spnego=tsumufs.spnego, reverse=True, continuous=True,
+                                                auth=tsumufs.auth, reverse=True, continuous=True,
                                                 cancel=True)
         self.replicationTaskId = 0
       except:
@@ -226,18 +226,6 @@ class FileSystemOverlay(tsumufs.Debuggable):
     if documents:
       for doc in documents:
         self.setCachedRevision(doc.id, doc.rev, doc.stats.st_mtime)
-
-      # If use-fs mode, replicating changes to remote database.
-      if couchedfs == self.remote:
-        doc_ids = [ doc.id for doc in documents ]
-
-        try:
-          self._debug('Replicating %d documents: %s' % (len(doc_ids), ", ".join(doc_ids)))
-          self._couchedLocal.doc_helper.replicate(tsumufs.dbName, tsumufs.dbRemote,
-                                                  spnego=tsumufs.spnego, doc_ids=doc_ids)
-        except tsumufs.DocumentException, e:
-          self._debug('Unable to replicate changes to remote db: %s'
-                      % str(e))
 
   def __getitem__(self, fusepath):
     '''
