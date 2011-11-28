@@ -20,6 +20,7 @@ import tsumufs
 
 import traceback
 import sys
+import os
 
 # Windows...
 if sys.platform != "win32":
@@ -29,7 +30,7 @@ else:
     import logging
 
     def openlog(name):
-        logging.basicConfig(filename=name, level=logging.DEBUG)
+        logging.basicConfig(filename=os.path.join('logs', name), level=logging.DEBUG)
 
     def syslog(level, message):
         logging.warning(message)
