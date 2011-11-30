@@ -32,6 +32,21 @@ from DistUtilsExtra.command import *
 scripts = ['src/tsumufs']
 scripts.extend(glob.glob(os.path.join('utils', '*')))
 
+cmdclass = { "build" : build_extra.build_extra,
+             "build_help" :  build_help.build_help,
+             "build_icons" :  build_icons.build_icons }
+
+if sys.platform != 'win32':
+    data_files = [ ('/usr/share/man/man1',
+                   glob.glob(os.path.join('man', '*'))),
+                   ('/usr/share/tsumufs/icons',
+                   glob.glob(os.path.join('icons', '*'))) ]
+    cmdclass['build_i18n'] = build_i18n.build_i18n
+
+else:
+    data_files = []
+
+
 setup(name='TsumuFS',
       version='.'.join(map(str, tsumufs.__version__)),
       license='GPL v2',
@@ -42,15 +57,9 @@ setup(name='TsumuFS',
       package_dir={'': 'lib'},
       packages=['tsumufs'],
       scripts=scripts,
-      data_files=[('/usr/share/man/man1',
-                   glob.glob(os.path.join('man', '*'))),
-                  ('/usr/share/tsumufs/icons',
-                   glob.glob(os.path.join('icons', '*')))],
+      data_files=data_files,
+      cmdclass=cmdclass,
       requires=['fuse', 'xattr', 'pygtk', 'gtk', 'egg'],
-      cmdclass = { "build" : build_extra.build_extra,
-                   "build_i18n" :  build_i18n.build_i18n,
-                   "build_help" :  build_help.build_help,
-                   "build_icons" :  build_icons.build_icons },
       include_package_data=True,
       package_data = { 'tsumufs' : [ 'views/*.py' ] },
 )
