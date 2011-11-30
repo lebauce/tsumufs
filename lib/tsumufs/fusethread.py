@@ -24,6 +24,7 @@ import stat
 import statvfs
 import time
 import traceback
+import getpass
 
 import fuse
 from fuse import Fuse
@@ -242,7 +243,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         changesfilters.store(helper.database)
 
     try:
-        remote_helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName, tsumufs.dbRemote, spnego=tsumufs.spnego)
+        remote_helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName, tsumufs.dbRemote, auth=tsumufs.auth)
         if not remote_helper.database.get("_design/replication"):
             repfilters = ReplicationFiltersDocument()
             repfilters._data['_id'] = "_design/replication"
@@ -446,7 +447,20 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self.parser.add_option('-t', '--auth',
                            dest='auth',
                            default='webauth',
-                           help='Specify authentication method for remote access. [default: %webauth]')
+                           help='Specify authentication method for remote access. [default: %default]')
+    self.parser.add_option('-c', '--cookie',
+                           dest='cookie',
+                           default=None,
+                           help='Specify authentication cookie for remote access. [default: %default]')
+    self.parser.add_option('-u', '--user',
+                           dest='user',
+                           default=getpass.getuser(),
+                           help='Specify user name for authentication. [default: %default]')
+    self.parser.add_option('-p', '--passwd',
+                           dest='passwd',
+                           default='',
+                           help='Specify password for authentication. [default: %default]')
+
     self.parser.add_option('-d', '--debug',
                            dest='debugMode',
                            action='store_true',
@@ -457,7 +471,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            action='store',
                            help=('The debug level at which to output'
                                  'data. [default: 0]'))
-    self.parser.add_option('-p', '--populate-db',
+    self.parser.add_option('-b', '--populate-db',
                            dest='populateDb',
                            action='store_true',
                            help='Enable the populating of the database. [default: %default]')
@@ -501,14 +515,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       tsumufs.cachePoint = os.path.join(tsumufs.cacheBaseDir,
                                         tsumufs.mountPoint.replace(':' + os.sep, '').replace(os.sep, '-'))
 
-    if tsumufs.auth == "webauth":
-        import getpass
-        self._debug("Getting credentials from the user")
-        tsumufs.auth = auth.WebAuthAuthenticator(getpass.getuser(), getpass.getpass())
-
-    elif tsumufs.auth == "spnego":
-        tsumufs.auth = auth.SPNEGOAuthenticator()
-
     # Available on Windows(pywinfuse), MacOsX (macfuse)
     self.fsname = tsumufs.fsName
 
@@ -527,6 +533,19 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('rootUID is %d' % tsumufs.rootUID)
     self._debug('rootGID is %d' % tsumufs.rootGID)
     self._debug('mountOptions is %s' % tsumufs.mountOptions)
+
+    if tsumufs.auth == "webauth":
+        if tsumufs.cookie:
+            self._debug("Getting credentials from cookie")
+            tsumufs.auth = auth.WebAuthAuthenticator(cookie=tsumufs.cookie)
+            del tsumufs.cookie
+        else:
+            self._debug("Getting credentials from the user infos %s:%s:" % (tsumufs.user, tsumufs.passwd))
+            tsumufs.auth = auth.WebAuthAuthenticator(tsumufs.user, tsumufs.passwd)
+            del tsumufs.passwd
+
+    elif tsumufs.auth == "spnego":
+        tsumufs.auth = auth.SPNEGOAuthenticator()
 
   ######################################################################
   # Filesystem operations and system calls below here
