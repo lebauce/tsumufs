@@ -73,7 +73,7 @@ def main():
 
   # Setup our first thread, and parse our command line options.
   server = tsumufs.FuseThread()
-  server.parseCommandLine()
+  #server.parseCommandLine()
 
   tsumufs.context = server.GetContext()
 
