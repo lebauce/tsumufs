@@ -77,7 +77,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       for line in traceback.extract_tb(exc_info[2]):
         self._debug('***    %s(%d) in %s: %s' % line)
 
-      return False
+      raise
 
     self.multithreaded = 1
 
@@ -95,7 +95,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       for line in traceback.extract_tb(exc_info[2]):
         self._debug('***    %s(%d) in %s: %s' % line)
 
-      return False
+      raise
 
     self._debug('Initializing permissions overlay object.')
     try:
@@ -111,7 +111,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       for line in traceback.extract_tb(exc_info[2]):
         self._debug('***    %s(%d) in %s: %s' % line)
 
-      return False
+      raise
 
     self._debug('Initializing notification object.')
 
@@ -191,7 +191,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       for line in traceback.extract_tb(exc_info[2]):
         self._debug('***    %s(%d) in %s: %s' % line)
 
-      return False
+      return None
 
     tsumufs.user = User(tsumufs.dbName, tsumufs.user)
 
