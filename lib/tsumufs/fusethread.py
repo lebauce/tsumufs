@@ -34,6 +34,7 @@ from extendedattributes import extendedattribute
 from metrics import benchmark
 
 import ufo.auth as auth
+from ufo.user import User
 from couchdb.mapping import Document, DictField, TextField, Mapping
 from ufo.database import DocumentHelper, ChangesSequenceDocument, ChangesFiltersDocument, ReplicationFiltersDocument
 from tsumufs.filesystemoverlay import CachedRevisionDocument
@@ -191,6 +192,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         self._debug('***    %s(%d) in %s: %s' % line)
 
       return False
+
+    tsumufs.user = User(tsumufs.dbName, tsumufs.user)
 
   def fsinit(self):
     '''
@@ -508,6 +511,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     # Available on Windows(pywinfuse), MacOsX (macfuse)
     self.fsname = tsumufs.fsName
 
+    self._debug('user is %s' % tsumufs.user)
     self._debug('fsType is %s' % tsumufs.fsType)
     self._debug('fsName is %s' % tsumufs.fsName)
     self._debug('mountPoint is %s' % tsumufs.mountPoint)
@@ -1336,6 +1340,14 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                   % (e.errno, e.strerror))
       return -e.errno
 
+  def GetContext(self):
+    context = Fuse.GetContext(self)
+    if context["uid"] == os.getuid() and context["gid"] == os.getgid():
+        return { "uid" : tsumufs.user.uid,
+                 "gid" : tsumufs.user.gid,
+                 "pid" : context["pid"] }
+    else:
+        return context
 
 @extendedattribute('root', 'tsumufs.version')
 def xattr_version(type_, path, value=None):
