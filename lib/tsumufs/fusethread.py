@@ -242,20 +242,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         changesfilters._data['_id'] = "_design/changes"
         changesfilters.store(helper.database)
 
-    try:
-        remote_helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName, tsumufs.dbRemote, auth=tsumufs.auth)
-        if not remote_helper.database.get("_design/replication"):
-            repfilters = ReplicationFiltersDocument()
-            repfilters._data['_id'] = "_design/replication"
-            repfilters.store(remote_helper.database)
-    
-        helper = DocumentHelper(ReplicationFiltersDocument, tsumufs.dbName)
-        if not helper.database.get("_design/replication"):
-            repfilters = ReplicationFiltersDocument()
-            repfilters._data['_id'] = "_design/replication"
-            repfilters.store(helper.database)
-    except Exception, e:
-        self._debug('Failed to replicate design document to %s: (%s)' % (tsumufs.dbRemote, e))
+    if not helper.database.get("_design/replication"):
+        repfilters = ReplicationFiltersDocument()
+        repfilters._data['_id'] = "_design/replication"
+        repfilters.store(helper.database)
 
   def main(self, args=None):
     '''
