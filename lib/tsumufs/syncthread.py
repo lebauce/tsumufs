@@ -121,12 +121,11 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
         # were waiting for the lock
         return False
 
-    # Horrible hack, but it works to test for the existence of a file.
     try:
-      tsumufs.fsMount.readFileRegion(fusepath, 0, 0)
+      tsumufs.fsMount.lstat(fusepath)
     except (OSError, IOError), e:
       if e.errno != errno.ENOENT:
-        return True
+        raise
 
     if item.file_type != 'dir':
       if item.file_type == 'symlink':
