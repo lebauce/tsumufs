@@ -27,10 +27,11 @@ import threading
 import fuse
 
 import tsumufs
-from extendedattributes import extendedattribute
-from metrics import benchmark
+from tsumufs.extendedattributes import extendedattribute
+from tsumufs.metrics import benchmark
+from tsumufs.syncitem import SyncChangeDocument
 
-from ufo.database import DocumentHelper
+from ufo.database import DocumentException, DocumentHelper
 
 
 class SyncConflictError(Exception):
@@ -74,7 +75,6 @@ class SyncLog(tsumufs.Debuggable):
 
   _syncDocuments = None
   _syncChanges   = None
-  _fileChanges   = None
   _changesSeqs   = None
 
   _lock          = threading.RLock()
@@ -86,9 +86,6 @@ class SyncLog(tsumufs.Debuggable):
                                          tsumufs.dbName,
                                          batch=True)
     self._syncChanges   = DocumentHelper(tsumufs.SyncChangeDocument,
-                                         tsumufs.dbName,
-                                         batch=True)
-    self._fileChanges   = DocumentHelper(tsumufs.FileChangeDocument,
                                          tsumufs.dbName,
                                          batch=True)
     self._changesSeqs   = DocumentHelper(tsumufs.ChangesSequenceDocument,
@@ -117,7 +114,8 @@ class SyncLog(tsumufs.Debuggable):
     try:
       self._lock.acquire()
 
-      self._syncChanges.by_filename_and_type(key=[fusepath, 'new'], pk=True)
+      self.getChange(filename=fusepath, type='new', pk=True)
+
       return True
 
     except tsumufs.DocumentException, e:
@@ -142,7 +140,8 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.acquire()
       is_unlinked = False
 
-      for change in self._syncChanges.by_date():
+      for change in sorted(self.getChange(filename=fusepath),
+                           lambda x, y: cmp(x.date, y.date)):
         if change.filename == fusepath:
           if change.type == 'unlink':
             is_unlinked = True
@@ -174,7 +173,8 @@ class SyncLog(tsumufs.Debuggable):
     try:
       self._lock.acquire()
 
-      self._syncChanges.by_filename(key=fusepath, pk=True)
+      self.getChange(filename=fusepath, pk=True)
+
       return True
 
     except tsumufs.DocumentException, e:
@@ -255,43 +255,40 @@ class SyncLog(tsumufs.Debuggable):
       is_new_file = self.isNewFile(filename)
 
       if self.isFileDirty(filename):
-        for change in self._syncChanges.by_date(descending=True):
+        for change in sorted(self.getChange(filename=filename),
+                             lambda x, y: cmp(x.date, y.date), reverse=True):
           if change.type in ('new', 'change', 'link'):
-            if change.filename == filename:
-              # Remove the possible associated file change
-              try:
-                filechange = self._fileChanges.by_syncchangeid(key=change.id, pk=True)
+            # Remove the possible associated file change
+            try:
+              change.filechange.clearDataChanges()
 
-                filechange.clearDataChanges()
-                self._fileChanges.delete(filechange)
+            except:
+              self._debug('No filechange found for %s to delete' % filename)
 
-              except tsumufs.DocumentException, e:
-                self._debug('No filechange found for %s to delete' % filename)
+            # Remove the change
+            self._debug('Remove change item from synclog' % change)
+            self._removeFromSyncQueue(change)
 
-              # Remove the change
-              self._removeFromSyncQueue(change)
+          elif change.type in ('rename'):
+            # Okay, follow the rename back to remove previous changes. Leave
+            # the rename in place because the destination filename is a change
+            # we want to keep.
+            filename = change.old_fname
 
-          if change.type in ('rename'):
-            if change.new_fname == filename:
-              # Okay, follow the rename back to remove previous changes. Leave
-              # the rename in place because the destination filename is a change
-              # we want to keep.
-              filename = change.old_fname
+            # TODO(jtg): Do we really need to keep these renames? Unlinking
+            # the final destination filename in the line of renames is akin to
+            # just unlinking the original file in the first place. Ie:
+            #
+            #      file -> file' -> file'' -> unlinked
+            #
+            # After each successive rename, the previous file ceases to
+            # exist. Once the final unlink is called, the previous sucessive
+            # names no longer matter. Technically we could replace all of the
+            # renames with a single unlink of the original filename and
+            # achieve the same result.
 
-              # TODO(jtg): Do we really need to keep these renames? Unlinking
-              # the final destination filename in the line of renames is akin to
-              # just unlinking the original file in the first place. Ie:
-              #
-              #      file -> file' -> file'' -> unlinked
-              #
-              # After each successive rename, the previous file ceases to
-              # exist. Once the final unlink is called, the previous sucessive
-              # names no longer matter. Technically we could replace all of the
-              # renames with a single unlink of the original filename and
-              # achieve the same result.
-
-              # Remove the rename change until bugs detected
-              self._removeFromSyncQueue(change)
+            # Remove the rename change until bugs detected
+            self._removeFromSyncQueue(change)
 
       # Now add an additional syncitem to the queue to represent the unlink if
       # it wasn't a file that was created on the cache by the user.
@@ -309,21 +306,18 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.acquire()
 
       try:
-        syncchange = self._syncChanges.by_filename_and_type(key=[fname, 'change'],
-                                                            pk=True)
-        filechange = self._fileChanges.by_syncchangeid(key=syncchange.id, pk=True)
+        syncchange = self.getChange(filename=fname, type='change', pk=True)
 
       except tsumufs.DocumentException, e:
         syncchange = self._appendToSyncQueue('change', filename=fname)
-        filechange = self._fileChanges.create(syncchangeid=syncchange.id)
 
-      filechange.addDataChange(start, end, data)
+      syncchange.filechange.addDataChange(start, end, data)
 
     finally:
       self._lock.release()
 
   @benchmark
-  def addMetadataChange(self, fname, mode=False, uid=False, gid=False, times=False, acls=False, xattrs=[]):
+  def addMetadataChange(self, fname, **metadata):
     '''
     Metadata changes are synced automatically when there is a SyncItem change
     for the file. So all we need to do here is represent the metadata changes
@@ -335,16 +329,13 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.acquire()
 
       try:
-        syncchange = self._syncChanges.by_filename_and_type(key=[fname, 'change'],
-                                                            pk=True)
-        filechange = self._fileChanges.by_syncchangeid(key=syncchange.id, pk=True)
+        syncchange = self._syncChanges.getChange(filename=fname,
+                                                 type='change',
+                                                 pk=True)
 
       except tsumufs.DocumentException, e:
-        syncchange = self._appendToSyncQueue('change', filename=fname)
-        filechange = self._fileChanges.create(syncchangeid=syncchange.id)
-
-      filechange.addMetaDataChange(mode=mode, uid=uid, gid=gid, times=times, acls=acls, xattrs=xattrs)
-      self._fileChanges.update(filechange)
+        syncchange = self._appendToSyncQueue('change', filename=fname,
+                                             filechange=metadata)
 
     finally:
       self._lock.release()
@@ -356,16 +347,16 @@ class SyncLog(tsumufs.Debuggable):
     try:
       self._lock.acquire()
 
-      for change in self._syncChanges.by_filename_and_type(key=[fusepath, 'change']):
-        try:
-          filechange = self._fileChanges.by_syncchangeid(key=change.id, pk=True)
+      try:
+        change = self._syncChanges.getChange(filename=fusepath,
+                                             type='change',
+                                             pk=True)
+        self._debug('Truncating data in %s' % repr(change))
+        change.filechange.truncateLength(size)
+        
 
-          self._debug('Truncating data in %s' % repr(change))
-          filechange.truncateLength(size)
-
-        except tsumufs.DocumentException, e:
-          self._debug('No filechange found for %s to truncate' % fusepath)
-          pass
+      except:
+        self._debug('No filechange found for %s to truncate' % fusepath)
 
     finally:
       self._lock.release()
@@ -382,7 +373,7 @@ class SyncLog(tsumufs.Debuggable):
 
         # Change the filename of all sync changes corresponding to this file
         # TODO: only rename the filename of sync changes made after the 'new'
-        for change in self._syncChanges.by_filename(key=old):
+        for change in self._syncChanges.by_filename(filename=old, type='new'):
           change.filename = new
           changes.append(change)
 
@@ -404,6 +395,33 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.release()
 
   @benchmark
+  def getChange(self, filename="", type='', pk=False):
+    if not filename and not type:
+      return self._syncChanges.by_filename()
+
+    startkey, endkey = [], []
+
+    if filename:
+      startkey.append(filename)
+      endkey.append(filename)
+
+    if type:
+      startkey.append(type)
+      endkey.append(type)
+
+    if endkey:
+      endkey[-1] += '\u9999'
+
+    result = self._syncChanges.by_filename(startkey=startkey,
+                                           endkey=endkey)
+
+    if pk:
+      for doc in result: return doc
+      raise DocumentException("Could not find primary key %s" % startkey)
+
+    return result
+
+  @benchmark
   def popChanges(self):
     # Firstly retrieve the number of the last consumed changes sequence
     try:
@@ -416,7 +434,8 @@ class SyncLog(tsumufs.Debuggable):
 
     for event in self._syncChanges.changes(feed="continuous",
                                            since=last_seq.seq_number,
-                                           timeout=5000):
+                                           timeout=5000,
+                                           include_docs=True):
       if not event.has_key('id'):
         continue
 
@@ -425,7 +444,11 @@ class SyncLog(tsumufs.Debuggable):
 
       removed = False
       filechange = None
-      syncitem   = self._syncChanges.by_id(key=event['id'], pk=True)
+
+      syncitem = SyncChangeDocument(**event.get('doc'))
+      # For CouchDB < 0.11
+      if not syncitem:
+        syncitem = self._syncChanges[event['id']]
 
       self._debug('Syncitem retrieved from a new change; %s' % syncitem)
 
@@ -445,7 +468,7 @@ class SyncLog(tsumufs.Debuggable):
 
         # Check that the SyncItem stills exists in the database
         # now that locks have been taken
-        syncitem = self._syncChanges.by_id(key=event['id'], pk=True)
+        syncitem = self._syncChanges[event['id']]
 
       except OSError, err:
         if err.errno == errno.ENOENT:
@@ -456,7 +479,7 @@ class SyncLog(tsumufs.Debuggable):
       except DocumentException, e:
         removed = True
 
-      if removed:
+      if removed and syncitem.type != 'unlink':
         self._debug('Syncitem %s has been deleted since we first saw it' % syncitem)
         self.finishedWithChange(syncitem, remove_item=False)
         continue
@@ -468,18 +491,17 @@ class SyncLog(tsumufs.Debuggable):
           # this SyncChange has been created.
           self._lock.acquire()
 
-          filechange = self._fileChanges.by_syncchangeid(key=syncitem.id, pk=True)
-        except tsumufs.DocumentException, e:
-          self._debug('No filechange found for %s' % syncitem.filename)
+          if not syncitem.filechange:
+            self._debug('No filechange found for %s' % syncitem.filename)
 
         finally:
           self._lock.release()
 
       syncitem.seq_number = event['seq']
       self._debug('Yielding (syncchange, filechange), seq %d: (%s,%s)'
-                  % (event['seq'], syncitem, str(filechange)))
+                  % (event['seq'], syncitem, str(syncitem.filechange)))
 
-      yield (syncitem, filechange)
+      yield (syncitem, syncitem.filechange)
 
   @benchmark
   def finishedWithChange(self, syncitem, remove_item=True):
@@ -497,15 +519,11 @@ class SyncLog(tsumufs.Debuggable):
         tsumufs.cacheManager.unlockFile(syncitem.old_fname)
         tsumufs.fsMount.unlockFile(syncitem.old_fname)
 
-      # Replicate the change to remote database,
-      # remove the item from the synclog.
+      # Remove the item from the synclog.
       if remove_item:
         if syncitem.type == 'change':
           try:
-            change = self._fileChanges.by_syncchangeid(key=syncitem.id, pk=True)
-
-            change.clearDataChanges()
-            self._fileChanges.delete(change)
+            syncitem.filechange.clearDataChanges()
 
           except tsumufs.DocumentException, e:
             self._debug('No filechange found for %s' % syncitem.filename)

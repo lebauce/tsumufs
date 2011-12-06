@@ -44,6 +44,8 @@ class SyncChangeDocument(UTF8Document):
   new_fname = TextField()
   filename  = TextField()
 
+  change    = DictField()
+
   _REQUIRED_KEYS = {
     'new':    [ 'file_type', 'filename' ],
     'link':   [ 'filename' ],
@@ -56,7 +58,7 @@ class SyncChangeDocument(UTF8Document):
   _VALID_FILE_TYPES = [ 'file', 'dir', 'symlink', 'socket', 'fifo', 'device' ]
   _VALID_DEV_TYPES  = [ 'char', 'block' ]
 
-  def __init__(self, **hargs):
+  def __init__(self, *args, **hargs):
     if hargs:
       type = hargs['type']
 
@@ -67,48 +69,42 @@ class SyncChangeDocument(UTF8Document):
         if key not in hargs.keys():
           raise TypeError('Missing required key %s' % key)
 
-    super(SyncChangeDocument, self).__init__(**hargs)
+    super(SyncChangeDocument, self).__init__(*args, **hargs)
 
   def __repr__(self):
     return str(self)
 
   def __str__(self):
-    return ('<SyncItem: type: %s filename: %s date: %d>'
+    return ('<SyncItem: type: %s filename: %s date: %s>'
             % (self.type,
                self.filename,
                self.date))
 
-  @ViewField.define('syncchange')
-  def by_id(doc):
-    if doc['doctype'] == "SyncChangeDocument":
-      yield doc['_id'], doc
+  by_filename = ViewField('syncchange',
+    language='javascript',
+    map_fun="function (doc) {"
+              "if (doc.doctype === 'SyncChangeDocument') {" \
+                "if (doc.filename)" \
+                  "emit([doc.filename, doc.type, doc.date], doc);" \
+                "else " \
+                  "emit([doc.new_fname, doc.type], doc);" \
+                "}" \
+              "}")
 
-  @ViewField.define('syncchange')
-  def by_date(doc):
-    if doc['doctype'] == "SyncChangeDocument":
-      yield doc['date'], doc
+  by_dir_prefix = ViewField('syncchange',
+    language='javascript',
+    map_fun="function (doc) {"
+              "if (doc.doctype === 'SyncChangeDocument') {" \
+                "var last = '';" \
+                "var current = doc.filename;" \
+                "while (current !='/' && current != last) {" \
+                  "emit(current, doc);" \
+                  "current = current.slice(0, current.lastIndexOf('/'));" \
+                "}" \
+              "}" \
+            "}")
 
-  @ViewField.define('syncchange')
-  def by_filename(doc):
-    if doc['doctype'] == "SyncChangeDocument":
-      if doc['filename']:
-        yield doc['filename'], doc
-      else:
-        yield doc['new_fname'], doc
+  @property
+  def filechange(self):
+      return FileChangeDocument(id=self.id, **self.change)
 
-  @ViewField.define('syncchange')
-  def by_filename_and_type(doc):
-    if doc['doctype'] == "SyncChangeDocument":
-      yield [doc['filename'], doc['type']], doc
-
-  @ViewField.define('syncchange')
-  def by_dir_prefix(doc):
-    from os import sep
-    from os.path import dirname
-    if doc['doctype'] == "SyncChangeDocument" and doc['filename']:
-      last = ''
-      current = dirname(doc['filename'])
-      while current != sep and current != last:
-        yield current, doc
-        last = current
-        current = dirname(current)

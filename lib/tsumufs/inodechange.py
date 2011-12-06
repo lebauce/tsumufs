@@ -24,28 +24,19 @@ from dataregion import *
 from ufo.database import *
 
 
-class FileChangeDocument(Document, tsumufs.Debuggable):
+class FileChangeDocument(tsumufs.Debuggable):
   '''
-  CouchDb document that represents any change to a file
+  Represents any change to a file
   and the data that it points to.
   '''
 
-  doctype       = TextField(default="FileChangeDocument")
-  syncchangeid  = TextField()
-
-  mode  = BooleanField()
-  uid   = BooleanField()
-  gid   = BooleanField()
-  times = BooleanField()
-  acls   = BooleanField()
-  xattrs = ListField(TextField())
-
-  symlinkPath = TextField()
-
-  @ViewField.define('filechange')
-  def by_syncchangeid(doc):
-    if doc['doctype'] == "FileChangeDocument":
-      yield doc['syncchangeid'], doc
+  mode        = False
+  uid         = False
+  gid         = False
+  times       = False
+  acls        = False
+  xattrs      = []
+  symlinkPath = ""
 
   def __repr__(self):
     '''
@@ -53,7 +44,7 @@ class FileChangeDocument(Document, tsumufs.Debuggable):
     object.
     '''
 
-    rep = '<FileChangeDocument %s' % self.syncchangeid
+    rep = '<FileChangeDocument '
 
     if self.times:
       rep += ' times: %s' % self.times
@@ -81,8 +72,7 @@ class FileChangeDocument(Document, tsumufs.Debuggable):
     self._setName('FileChangeDocument')
     sys.excepthook = tsumufs.syslogExceptHook
 
-    Document.__init__(self, **hargs)
-
+    self.__dict__.update(hargs)
     self._dataRegions = DocumentHelper(DataRegionDocument, tsumufs.dbName, batch=True)
 
   def addDataChange(self, start, end, data):

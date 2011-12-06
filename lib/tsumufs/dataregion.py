@@ -218,7 +218,10 @@ class DataRegionDocument(Document):
                                 end=dataregion.end,
                                 data=self.data + dataregion.data)
 
-  @ViewField.define('dataregionchange')
-  def by_filechangeid(doc):
-    if doc['doctype'] == "DataRegionDocument":
-      yield doc['filechangeid'], doc
+  by_filechangeid = ViewField('dataregionchange',
+                              language='javascript',
+                              map_fun="function (doc) {"
+                                        "if (doc.doctype === 'DataRegionDocument') {" \
+                                          "emit(doc.filechangeid, doc);" \
+                                        "}" \
+                                      "}")
