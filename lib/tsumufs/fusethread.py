@@ -527,7 +527,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     if tsumufs.auth == "webauth":
         if tsumufs.cookie:
             self._debug("Getting credentials from cookie")
-            tsumufs.auth = auth.WebAuthAuthenticator(cookie=tsumufs.cookie)
+            tsumufs.auth = auth.WebAuthAuthenticator(cookie=open(tsumufs.cookie).read())
             del tsumufs.cookie
         else:
             self._debug("Getting credentials from the user infos %s:%s:" % (tsumufs.user, tsumufs.passwd))
