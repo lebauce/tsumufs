@@ -31,7 +31,7 @@ class DAVMount(FSMount, WebDAVFileSystem):
 
     def pingServerOK(self):
         try:
-            self.client.validate()
+            self.lstat("/" + str(tsumufs.user))
         except:
             return False
 
