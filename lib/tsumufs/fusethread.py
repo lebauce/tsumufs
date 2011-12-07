@@ -445,6 +445,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                            dest='cookie',
                            default=None,
                            help='Specify authentication cookie for remote access. [default: %default]')
+    self.parser.add_option('--del-cookie',
+                           dest='delcookie',
+                           action='store_true',
+                           default=False,
+                           help='Delete cookie file after authentication. [default: %default]')
     self.parser.add_option('-u', '--user',
                            dest='user',
                            default=getpass.getuser(),
@@ -532,7 +537,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         if tsumufs.cookie:
             self._debug("Getting credentials from cookie")
             tsumufs.auth = auth.WebAuthAuthenticator(cookie=open(tsumufs.cookie).read())
+
+            if tsumufs.delcookie:
+                os.remove(tsumufs.cookie)
             del tsumufs.cookie
+
         else:
             self._debug("Getting credentials from the user infos %s:%s:" % (tsumufs.user, tsumufs.passwd))
             tsumufs.auth = auth.WebAuthAuthenticator(tsumufs.user, tsumufs.passwd)

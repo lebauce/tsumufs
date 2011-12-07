@@ -74,7 +74,9 @@ rootMode     = 0555
 
 dbName       = 'tsumufs'
 dbRemote     = None
-spnego       = False
+auth         = 'webauth'
+cookie       = None
+delcookie    = False
 
 fsBaseDir     = '/var/lib/tsumufs/fs'
 fsMountPoint  = None
