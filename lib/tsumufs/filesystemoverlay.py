@@ -45,10 +45,13 @@ class CachedRevisionDocument(UTF8Document):
   revision = TextField()
   mtime    = FloatField()
 
-  @ViewField.define('cachedrevision')
-  def by_fileid(doc):
-      if doc['doctype'] == "CachedRevisionDocument":
-          yield doc['fileid'], doc
+  by_fileid = ViewField('cachedrevision',
+    language='javascript',
+    map_fun="function (doc) {"
+              "if (doc.doctype === 'CachedRevisionDocument') {" \
+                "emit(doc.fileid, doc);" \
+              "}" \
+            "}")
 
 
 class FileSystemOverlay(tsumufs.Debuggable):
