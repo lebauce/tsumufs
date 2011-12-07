@@ -1351,7 +1351,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
   def GetContext(self):
     context = Fuse.GetContext(self)
-    if context["uid"] == os.getuid() and context["gid"] == os.getgid():
+    if (sys.platform == "win32" or (context["uid"] == os.getuid() and
+                                    context["gid"] == os.getgid())):
         return { "uid" : tsumufs.user.uid,
                  "gid" : tsumufs.user.gid,
                  "pid" : context["pid"] }
