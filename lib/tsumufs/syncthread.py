@@ -131,7 +131,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
       if item.file_type == 'symlink':
         tsumufs.fsMount.symlink(os.readlink(cachepath), fusepath, document=document)
       else:
-        tsumufs.fsMount.copy(open(cachepath, "r"),
+        tsumufs.fsMount.copy(open(cachepath, "rb"),
                              fusepath, document=document)
           
       tsumufs.fsMount.chmod(fusepath, document.mode)
@@ -233,7 +233,11 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
                   % (fusepath, region.start,
                      region.end, repr(data)))
 
-      target = tsumufs.fsMount.open(fusepath, os.O_RDWR)
+      try:
+          target = tsumufs.fsMount.open(fusepath, os.O_RDWR | os.O_BINARY)
+      except AttributeError, e:
+          target = tsumufs.fsMount.open(fusepath, os.O_RDWR)
+
       target.seek(region.start)
       target.write(data)
       target.close()
@@ -294,6 +298,8 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
       try:
         self._debug('Attempting open of %s' % conflictpath)
+
+        # To do open files in binary mode on Windows (os.O_BINARY)
         tsumufs.cacheManager.fakeOpen(conflictpath,
                                       os.O_CREAT|os.O_APPEND|os.O_RDWR,
                                       0700 | stat.S_IFREG);

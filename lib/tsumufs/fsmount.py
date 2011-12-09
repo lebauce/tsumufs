@@ -115,7 +115,11 @@ class FSMount(tsumufs.Debuggable):
       self.lockFile(filename)
 
       try:
-        fp = self.open(filename, os.O_RDONLY)
+        try:
+            fp = self.open(filename, os.O_RDONLY | os.O_BINARY)
+        except AttributeError, e:
+            fp = self.open(filename, os.O_RDONLY)
+
         fp.seek(start)
         result = fp.read(end - start)
         fp.close()
@@ -163,7 +167,11 @@ class FSMount(tsumufs.Debuggable):
       self.lockFile(filename)
 
       try:
-        fp = self.open(filename, os.O_APPEND)
+        try:
+            fp = self.open(filename, os.O_APPEND | os.O_BINARY)
+        except AttributeError, e:
+            fp = self.open(filename, os.O_APPEND)
+
         fp.seek(start)
         fp.write(data)
         fp.close()

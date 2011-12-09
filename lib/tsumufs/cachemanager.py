@@ -844,8 +844,12 @@ class CacheManager(tsumufs.Debuggable):
             stat.S_ISCHR(document.mode)  or
             stat.S_ISBLK(document.mode)):
 
-          shutil.copyfileobj(tsumufs.fsMount.open(fusepath, os.O_RDONLY),
-                             open(cachepath, "w"))
+          try:
+              shutil.copyfileobj(tsumufs.fsMount.open(fusepath, os.O_RDONLY | os.O_BINARY),
+                                 open(cachepath, "wb"))
+          except AttributeError, e:
+              shutil.copyfileobj(tsumufs.fsMount.open(fusepath, os.O_RDONLY),
+                                 open(cachepath, "w"))
 
         elif stat.S_ISLNK(document.mode):
           dest = os.readlink(fspath)
