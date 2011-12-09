@@ -93,6 +93,8 @@ class View(tsumufs.Debuggable):
 
   docClass = None         # Document class of the view.
 
+  fileClass = None        # File class of the view.
+
   viewDocuments = None    # Document helper to get the view documents.
 
 

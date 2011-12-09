@@ -63,6 +63,8 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     self.parseCommandLine()
 
+    tsumufs.fuseThread = self
+
     self._debug('Creating design documents')
     try:
         self.createDesignDocuments()
@@ -267,6 +269,17 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       Idea borrowed directly from Robie Basak in his email to fuse-dev, which is
       visible at <http://www.nabble.com/Python%3A-Pass-parameters-to-file_class-to18301066.html#a20066429>.
       '''
+
+      def __new__(cls, path, *args, **kwargs):
+        kwargs.update(self.GetContext())
+        cls = tsumufs.FuseFile
+
+        if tsumufs.viewsManager.isAnyViewPath(path):
+          view_class = tsumufs.viewsManager.getFileClass(path)
+          if view_class:
+            cls = view_class
+
+        return cls(path, *args, **kwargs)
 
       def __init__(self2, *args, **kwargs):
         kwargs.update(self.GetContext())

@@ -60,8 +60,10 @@ class FuseFile(tsumufs.Debuggable):
     # a view virtual folder.
     if tsumufs.viewsManager.isAnyViewPath(path):
       self._path = tsumufs.viewsManager.realFilePath(path)
+      self._manager = tsumufs.viewsManager
     else:
       self._path = path
+      self._manager = tsumufs.cacheManager
 
     self._setName('FuseFile <%s> ' % self._path)
     # NOTE: If mode == None, then we were called as a creat(2) system call,
@@ -98,21 +100,28 @@ class FuseFile(tsumufs.Debuggable):
 
     # Verify access to the directory
     self._debug('Verifying access to directory %s' % os.path.dirname(self._path))
-    tsumufs.cacheManager.access(self._uid, os.path.dirname(self._path), access_mode | os.X_OK)
+    self._manager.access(self._uid, os.path.dirname(self._path), access_mode | os.X_OK)
 
     if not self._fdFlags & os.O_CREAT:
       self._debug('Checking access on file since we didn\'t create it.')
-      tsumufs.cacheManager.access(self._uid, self._path, access_mode)
+      self._manager.access(self._uid, self._path, access_mode)
 
-    self._debug('Calling fakeopen')
-    tsumufs.cacheManager.fakeOpen(self._path, self._fdFlags, self._fdMode,
-                                  self._uid, self._gid)
+    if tsumufs.viewsManager.isAnyViewPath(path):
+      self._debug('Calling views manager fakeopen')
+      tsumufs.viewsManager.fakeOpen(self._path, self._fdFlags, self._fdMode,
+                                    self._uid, self._gid)
+      self._isNewFile = False
 
-    if self._fdFlags & os.O_CREAT:
-      self._debug('Adding a new change to the log as it\'s a new file')
-      tsumufs.syncLog.addNew('file', filename=self._path)
+    else:
+      self._debug('Calling fakeopen')
+      self._manager.fakeOpen(self._path, self._fdFlags, self._fdMode,
+                             self._uid, self._gid)
 
-      self._isNewFile = True
+      if self._fdFlags & os.O_CREAT:
+        self._debug('Adding a new change to the log as it\'s a new file')
+        tsumufs.syncLog.addNew('file', filename=self._path)
+
+        self._isNewFile = True
 
     if self._fdFlags & os.O_TRUNC:
       self.ftruncate(0)
@@ -147,8 +156,8 @@ class FuseFile(tsumufs.Debuggable):
                 % (self._path, length, offset))
 
     try:
-      retval = tsumufs.cacheManager.readFile(self._path, offset, length,
-                                             self._fdFlags, self._fdMode)
+      retval = self._manager.readFile(self._path, offset, length,
+                                      self._fdFlags, self._fdMode)
       self._debug('Returning %s' % repr(retval))
 
       return retval
@@ -169,15 +178,15 @@ class FuseFile(tsumufs.Debuggable):
     #   - The file existed, and an existing block was overwritten.
 
     fspath = tsumufs.fsPathOf(self._path)
-    statgoo = tsumufs.cacheManager.statFile(self._path)
+    statgoo = self._manager.statFile(self._path)
 
     if not self._isNewFile:
       self._debug('Reading offset %d, length %d from %s.'
                   % (offset, len(new_data), self._path))
-      old_data = tsumufs.cacheManager.readFile(self._path,
-                                               offset,
-                                               len(new_data),
-                                               os.O_RDONLY)
+      old_data = self._manager.readFile(self._path,
+                                        offset,
+                                        len(new_data),
+                                        os.O_RDONLY)
       self._debug('From cacheManager.readFile got %s' % repr(old_data))
 
       # Pad missing chunks on the old_data stream with NULLs, as fs
@@ -195,8 +204,8 @@ class FuseFile(tsumufs.Debuggable):
       self._debug('We\'re a new file -- not adding a change record to log.')
 
     try:
-      if tsumufs.cacheManager.writeFile(self._path, offset, new_data,
-                                        self._fdFlags, self._fdMode):
+      if self._manager.writeFile(self._path, offset, new_data,
+                                 self._fdFlags, self._fdMode):
         if not self._isNewFile:
           self._debug('Adding change to synclog [ %s | %d | %d | %s ]'
                 % (self._path, offset, offset+len(new_data), repr(old_data)))
@@ -226,7 +235,7 @@ class FuseFile(tsumufs.Debuggable):
   def release(self, flags):
     self._debug('opcode: release | flags: %s' % self._flagsToString(flags))
 
-    tsumufs.cacheManager.releaseFile(self._path, flags)
+    self._manager.releaseFile(self._path, flags)
 
     if self._isSyncPauser:
       tsumufs.syncPause.clear()
@@ -253,7 +262,7 @@ class FuseFile(tsumufs.Debuggable):
     self._debug('opcode: fgetattr')
 
     try:
-      return tsumufs.cacheManager.statFile(self._path)
+      return self._manager.statFile(self._path)
     except OSError, e:
       self._debug('OSError caught: errno %d: %s'
                   % (e.errno, e.strerror))
@@ -264,17 +273,17 @@ class FuseFile(tsumufs.Debuggable):
     self._debug('opcode: ftruncate | size: %d' % size)
 
     try:
-      statgoo = tsumufs.cacheManager.statFile(self._path)
+      statgoo = self._manager.statFile(self._path)
 
       if size != statgoo.st_size:
         # Truncate the file...
-        if tsumufs.cacheManager.truncateFile(self._path, size):
+        if self._manager.truncateFile(self._path, size):
           # ... and add the truncated data to the synclog if file exists
           if not self._isNewFile:
             if size < statgoo.st_size:
-              data = tsumufs.cacheManager.readFile(self._path, size,
-                                                   (statgoo.st_size - size),
-                                                   os.O_RDONLY)
+              data = self._manager.readFile(self._path, size,
+                                            statgoo.st_size - size,
+                                            os.O_RDONLY)
               tsumufs.syncLog.addChange(self._path, size, statgoo.st_size, data)
             elif size > statgoo.st_size:
               tsumufs.syncLog.addChange(self._path, statgoo.st_size, size,

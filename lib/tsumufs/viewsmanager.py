@@ -63,6 +63,15 @@ class ViewsManager(tsumufs.Debuggable):
 
     return self._views.has_key(viewPath.split('/')[0])
 
+  def getFileClass(self, path):
+    '''
+    Return the dedicated file class for a path
+    '''
+
+    x, x, viewPath = path.partition(tsumufs.viewsPoint + '/')
+
+    return self._views[viewPath.split('/')[0]].fileClass
+
   def __getattr__(self, attr):
     '''
     Redirect a wrapper that call the attribute on the instantiated view
@@ -88,6 +97,14 @@ class ViewsManager(tsumufs.Debuggable):
 
       self._debug("Calling '%s%s' on '%s' view" % (attr, str(wrapped_args), str(view)))
 
-      return getattr(self._views[view], attr).__call__(*wrapped_args, **kw)
+      method = getattr(self._views[view], attr, None)
+      if not method:
+        # Attempt to open a file in a view.
+        # Default behaviour is to delegate the call to the cache manager
+        # as files in most views are indeed real files accessible through
+        # a different path
+        method = getattr(tsumufs.cacheManager, attr)
+
+      return method(*wrapped_args, **kw)
 
     return path_wrapper
