@@ -59,13 +59,21 @@ class FuseFile(tsumufs.Debuggable):
     # Restore the real file path if the file has been acceded via
     # a view virtual folder.
     if tsumufs.viewsManager.isAnyViewPath(path):
-      self._path = tsumufs.viewsManager.realFilePath(path)
-      self._manager = tsumufs.viewsManager
-    else:
-      self._path = path
-      self._manager = tsumufs.cacheManager
+      realPath = tsumufs.viewsManager.realFilePath(path)
 
-    self._setName('FuseFile <%s> ' % self._path)
+      if tsumufs.viewsManager.isAnyViewPath(realPath):
+        self._manager = tsumufs.viewsManager
+        self._path = path
+
+      else:
+        self._manager = tsumufs.cacheManager
+        self._path = realPath
+
+    else:
+      self._manager = tsumufs.cacheManager
+      self._path = path
+
+    self._setName('FuseFile <%s -> %s> ' % (path, self._path))
     # NOTE: If mode == None, then we were called as a creat(2) system call,
     # otherwise we were called as an open(2) system call.
 
@@ -106,22 +114,15 @@ class FuseFile(tsumufs.Debuggable):
       self._debug('Checking access on file since we didn\'t create it.')
       self._manager.access(self._uid, self._path, access_mode)
 
-    if tsumufs.viewsManager.isAnyViewPath(path):
-      self._debug('Calling views manager fakeopen')
-      tsumufs.viewsManager.fakeOpen(self._path, self._fdFlags, self._fdMode,
-                                    self._uid, self._gid)
-      self._isNewFile = False
+    self._debug('Calling fakeopen')
+    self._manager.fakeOpen(self._path, self._fdFlags, self._fdMode,
+                           self._uid, self._gid)
 
-    else:
-      self._debug('Calling fakeopen')
-      self._manager.fakeOpen(self._path, self._fdFlags, self._fdMode,
-                             self._uid, self._gid)
+    if self._fdFlags & os.O_CREAT:
+      self._debug('Adding a new change to the log as it\'s a new file')
+      tsumufs.syncLog.addNew('file', filename=self._path)
 
-      if self._fdFlags & os.O_CREAT:
-        self._debug('Adding a new change to the log as it\'s a new file')
-        tsumufs.syncLog.addNew('file', filename=self._path)
-
-        self._isNewFile = True
+      self._isNewFile = True
 
     if self._fdFlags & os.O_TRUNC:
       self.ftruncate(0)
