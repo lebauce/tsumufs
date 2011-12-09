@@ -329,13 +329,13 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.acquire()
 
       try:
-        syncchange = self._syncChanges.getChange(filename=fname,
-                                                 type='change',
-                                                 pk=True)
+        syncchange = self.getChange(filename=fname,
+                                    type='change',
+                                    pk=True)
 
       except tsumufs.DocumentException, e:
         syncchange = self._appendToSyncQueue('change', filename=fname,
-                                             filechange=metadata)
+                                             change=metadata)
 
     finally:
       self._lock.release()
@@ -348,9 +348,9 @@ class SyncLog(tsumufs.Debuggable):
       self._lock.acquire()
 
       try:
-        change = self._syncChanges.getChange(filename=fusepath,
-                                             type='change',
-                                             pk=True)
+        change = self.getChange(filename=fusepath,
+                                type='change',
+                                pk=True)
         self._debug('Truncating data in %s' % repr(change))
         change.filechange.truncateLength(size)
         
