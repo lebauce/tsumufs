@@ -122,6 +122,25 @@ class CacheManager(tsumufs.Debuggable):
       self.unlockFile(fusepath)
 
   @benchmark
+  def du(self, fusepath):
+    self.lockFile(fusepath)
+
+    self._debug('Du %s' % fusepath)
+    try:
+      opcodes = self._genCacheOpcodes(fusepath, for_stat=True)
+      self._debug('Opcodes are: %s' % str(opcodes))
+
+      self._validateCache(fusepath, opcodes)
+
+      if 'enoent' in opcodes:
+        raise OSError(errno.ENOENT, fusepath, os.strerror(errno.ENOENT))
+
+      return tsumufs.fsOverlay.du(fusepath)
+
+    finally:
+      self.unlockFile(fusepath)
+
+  @benchmark
   def fakeOpen(self, fusepath, flags, mode=None, uid=None, gid=None):
     '''
     Attempt to open a file on the local disk.
