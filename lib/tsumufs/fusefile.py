@@ -236,10 +236,22 @@ class FuseFile(tsumufs.Debuggable):
   def release(self, flags):
     self._debug('opcode: release | flags: %s' % self._flagsToString(flags))
 
-    self._manager.releaseFile(self._path, flags)
+    try:
+        self._manager.releaseFile(self._path, flags)
 
-    if self._isSyncPauser:
-      tsumufs.syncPause.clear()
+        if self._isSyncPauser:
+            tsumufs.syncPause.clear()
+
+    except Exception, e:
+        exc_info = sys.exc_info()
+
+        self._debug('*** Unhandled exception occurred')
+        self._debug('***     Type: %s' % str(exc_info[0]))
+        self._debug('***    Value: %s' % str(exc_info[1]))
+        self._debug('*** Traceback:')
+
+        for line in traceback.extract_tb(exc_info[2]):
+            self._debug('***    %s(%d) in %s: %s' % line)
 
     return 0
 
