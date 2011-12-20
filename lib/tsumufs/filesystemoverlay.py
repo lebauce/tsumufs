@@ -202,10 +202,14 @@ class FileSystemOverlay(tsumufs.Debuggable):
     try:
       self._cachedRevisions.acquire()
 
-      self._localRevisions.delete(self._localRevisions.by_fileid(key=fileid,
-                                                                 pk=True))
+      local = self._localRevisions.by_fileid(key=fileid,
+                                             pk=True)
+
+      self._localRevisions.delete(local)
       # Remove the in-memory cached copy
       self._cachedRevisions.invalidate(fileid)
+
+      return local.fileid, local.revision
 
     except DocumentException, e:
       raise KeyError(e.message)

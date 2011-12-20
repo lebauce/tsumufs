@@ -23,6 +23,7 @@ import stat
 import time
 import errno
 import threading
+import posixpath
 
 import fuse
 
@@ -440,15 +441,43 @@ class SyncLog(tsumufs.Debuggable):
         continue
 
       if event.get('deleted'):
-        continue
+        # If the document has been deleted from an other computer
+        # remove the local cached revision of the file
+        try:
+          self._debug('Removing cached revision %s' % event['id'])
+
+          file_id, file_rev = tsumufs.fsOverlay.removeCachedRevision(event['id'])
+
+          # TODO: handle database compaction
+          self._debug('Looking for deleted document %s,%s' % (file_id, file_rev))
+          deleted = self._syncChanges.database.get(file_id, rev=file_rev)
+
+          self._debug('Removing file from cache %s' % deleted)
+          tsumufs.fsOverlay.unlink(posixpath.join(deleted['dirpath'], deleted['filename']),
+                                   nodb=True,
+                                   usefs=False)
+          continue
+
+        except KeyError:
+          # File was not cached
+          self._debug('File was probably removed from an other client')
+          continue
+
+        finally:
+          self.keepState(event['seq'])
 
       removed = False
       filechange = None
 
-      syncitem = SyncChangeDocument(**event.get('doc'))
-      # For CouchDB < 0.11
-      if not syncitem:
-        syncitem = self._syncChanges[event['id']]
+      try:
+        syncitem = SyncChangeDocument(**event.get('doc'))
+        # For CouchDB < 0.11
+        if not syncitem:
+          syncitem = self._syncChanges[event['id']]
+      except:
+        self._debug('File was probably created on an other client')
+        self.keepState(event['seq'])
+        continue
 
       self._debug('Syncitem retrieved from a new change; %s' % syncitem)
 
@@ -503,6 +532,12 @@ class SyncLog(tsumufs.Debuggable):
 
       yield (syncitem, syncitem.filechange)
 
+  def keepState(self, seq_number):
+    self._debug('Last sequence number %s' % seq_number)
+    last_seq = self._changesSeqs.by_consumer(key="tsumufs-sync-thread", pk=True)
+    last_seq.seq_number = seq_number
+    self._changesSeqs.update(last_seq)
+
   @benchmark
   def finishedWithChange(self, syncitem, remove_item=True):
     self._lock.acquire()
@@ -528,11 +563,7 @@ class SyncLog(tsumufs.Debuggable):
           except tsumufs.DocumentException, e:
             self._debug('No filechange found for %s' % syncitem.filename)
 
-        self._debug('Last sequence number %s' % syncitem.seq_number)
-        last_seq = self._changesSeqs.by_consumer(key="tsumufs-sync-thread", pk=True)
-        last_seq.seq_number = syncitem.seq_number
-        self._changesSeqs.update(last_seq)
-
+        self.keepState(syncitem.seq_number)
         self._removeFromSyncQueue(syncitem)
 
     finally:

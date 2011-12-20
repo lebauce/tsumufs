@@ -21,7 +21,7 @@ from inodechange import *
 from dataregion import *
 
 from ufo.database import *
-
+from couchdb.design import FilterFunction
 
 class SyncChangeDocument(UTF8Document):
   '''
@@ -97,12 +97,21 @@ class SyncChangeDocument(UTF8Document):
               "if (doc.doctype === 'SyncChangeDocument') {" \
                 "var last = '';" \
                 "var current = doc.filename;" \
-                "while (current !='/' && current != last) {" \
+                "while (current != '/' && current != last) {" \
                   "emit(current, doc);" \
                   "current = current.slice(0, current.lastIndexOf('/'));" \
                 "}" \
               "}" \
             "}")
+
+  changes = FilterFunction('syncchange',
+    'changes',
+    "function(doc, req) {" \
+      "return doc._deleted ||" \
+             "doc.doctype === 'SyncDocument' ||" \
+             "doc.doctype === 'SyncChangeDocument';" \
+    "}",
+    language='javascript')
 
   @property
   def filechange(self):
