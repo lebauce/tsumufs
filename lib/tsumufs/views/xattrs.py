@@ -43,8 +43,7 @@ class ExtendedAttributeFile(tsumufs.Debuggable):
     return tsumufs.cacheManager.getxattr(self._path, self._name)
 
   def write(self, new_data, offset):
-    tsumufs.fuseThread.setxattr(os.path.dirname(self._viewPath), self._name,
-                                new_data, len(new_data))
+    tsumufs.fuseThread.setxattr(self._path, self._name, new_data, len(new_data))
     return len(new_data)
 
   def release(self, flags):
