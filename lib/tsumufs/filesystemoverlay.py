@@ -110,6 +110,8 @@ class FileSystemOverlay(tsumufs.Debuggable):
       self._debug('Unable to replicate changes from remote couchdb: %s'
                   % str(e))
 
+    return False
+
   def stopReplication(self):
     if self.replicationTaskId:
       try:

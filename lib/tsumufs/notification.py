@@ -16,73 +16,82 @@
 
 '''TsumuFS is a disconnected, offline caching filesystem.'''
 
-import os, time
+import os
 import sys
-import tsumufs
 import traceback
 
-import gobject
-import dbus
-import dbus.service
+import tsumufs
 
-# required
-import dbus.glib
-
-gobject.threads_init()
-dbus.glib.init_threads()
+from ufo.database import DocumentHelper, BooleanField, TextField, DocumentException
+from ufo.notify import NotificationDocument
+from threading import _Event
 
 
-class DbusNotifier(tsumufs.Debuggable, dbus.service.Object):
-  '''
-  D-Bus notifier remote object
-  '''
+class BinaryStateNotifiation(NotificationDocument):
+    state = BooleanField()
 
-  def __init__(self, object_path='/org/tsumufs/NotificationService/notifier'):
-    dbus.service.Object.__init__(self, dbus.SystemBus(), object_path)
+    def __init__(self, state=True, **kw):
+        super(BinaryStateNotifiation, self).__init__(**kw)
 
-  @dbus.service.signal(dbus_interface='org.tsumufs.NotificationService')
-  def _notifyConnectionStatus(self, value):
-    pass
+        self.state = state
 
-  @dbus.service.signal(dbus_interface='org.tsumufs.NotificationService')
-  def _notifySyncWorkStatus(self, value):
-    pass
+    def __getattr__(self, attr):
+        if attr in ('title', 'body', 'summary'):
+            return getattr(self, '_' + attr)[self.state]
 
-  @dbus.service.signal(dbus_interface='org.tsumufs.NotificationService')
-  def _notifyUnmountedStatus(self, value):
-    pass
-
-  @dbus.service.signal(dbus_interface='org.tsumufs.NotificationService')
-  def _notifySyncPauseStatus(self, value):
-    pass
-
-  def notify(self, type, value):
-
-    signals = { 'connection' : self._notifyConnectionStatus,
-                'syncwork'   : self._notifySyncWorkStatus,
-                'unmounted'  : self._notifyUnmountedStatus,
-                'syncpause'  : self._notifySyncPauseStatus }
-
-    assert signals.has_key(type)
-
-    self._debug('Notify "%s" -> %s.' % (type, str(value)))
-    signals[type].__call__(value)
-
-    return True
+        return self.__getattribute__(attr)
 
 
-class Notification(tsumufs.Debuggable):
-  '''
-  Wrapper object to invoke remote notifier object
-  '''
+class EventNotifier(_Event):
 
-  def __init__(self):
-    self.object = DbusNotifier()
+    initiator = 'tsumufs'
 
-  def notify(self, type, value):
-    """
-    Invoke notify method of the notifer object
-    """
+    def __init__(self, type, state=False):
+        _Event.__init__(self)
 
-    self.object.notify(type, value)
+        self.type = type
 
+    def notify(self, state):
+        self.notifier = DocumentHelper(self.type, tsumufs.user.login)
+
+        try:
+            notification = self.notifier.by_subtype_and_initiator(key=[self.type.subtype.default, self.initiator],
+                                                                  pk=True)
+            notification.state = state
+            self.notifier.update(notification)
+
+        except DocumentException, e:
+            self.notifier.create(initiator=self.initiator,
+                                 target=tsumufs.user.login,
+                                 state=state)
+
+    def clear(self):
+        _Event.clear(self)
+        self.notify(False)
+
+    def set(self):
+        _Event.set(self)
+        self.notify(True)
+
+
+class ConnectionNotification(BinaryStateNotifiation):
+    subtype = TextField(default="Connection")
+
+    _title   = { False : _("Disconnected from server"),
+                 True  : _("Connected to server") }
+    _body    = { False : _('You have been disconnected from server.'),
+                 True  : _('You are connected to server.') }
+    _summary = { False : _("Disconnected from server"),
+                 True  : _("Connected to server") }
+
+
+class UnmountedNotification(BinaryStateNotifiation):
+    subtype = TextField(default="Unmounted")
+
+
+class SyncPauseNotification(BinaryStateNotifiation):
+    subtype = TextField(default="SyncPause")
+
+
+class SyncWorkNotification(BinaryStateNotifiation):
+    subtype = TextField(default="SyncWork")

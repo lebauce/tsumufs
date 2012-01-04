@@ -467,22 +467,28 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
     else:
       self._debug('No conflicts detected. Merged successfully.')
 
-  def _replicationHeartbeat():
-    if tsumufs.fsOverlay.startReplication():
-      tsumufs.remoteReplication.set()
-    else:
-      tsumufs.remoteReplication.clear()
-    self.dbHeartbeat.start()
+  def replicationCheckOk():
+    #TODO: Test if the continuous replication is running
+    if not tsumufs.remoteReplication.isSet():
+        if tsumufs.fsOverlay.startReplication():
+            tsumufs.remoteReplication.set()
+            return True
+
+        else:
+            tsumufs.remoteReplication.clear()
+            return False
+
+    return True
 
   def run(self):
-    # Set up a 'heartbeat' timer for the replication
-    # from the remote server to the client
-    tsumufs.fsOverlay.startReplication()
-    self.dbHeartbeat = threading.Timer(30.0, self._replicationHeartbeat)
-
     try:
       while not tsumufs.unmounted.isSet():
         self._debug('TsumuFS not unmounted yet.')
+
+        while (not self.replicationCheckOk()
+               and not tsumufs.unmounted.isSet()):
+          self._debug('Replication from server unavailable')
+          time.sleep(5)
 
         while (not tsumufs.fsMount.fsMountCheckOK()
                and not tsumufs.unmounted.isSet()):
@@ -556,6 +562,7 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
               self._debug('Not removing change from the synclog, but finishing.')
               tsumufs.syncLog.finishedWithChange(item, remove_item=False)
 
+              tsumufs.syncWork.clear()
               break
 
       self._debug('Shutdown requested.')
@@ -581,13 +588,6 @@ class SyncThread(tsumufs.Debuggable, threading.Thread):
 
     except Exception, e:
       tsumufs.syslogCurrentException()
-
-    self.dbHeartbeat.cancel()
-
-    # This fails probably because of the /couchdb in the
-    # URL of the remote CouchDB server
-    # if tsumufs.remoteReplication.isSet():
-    #   tsumufs.fsOverlay.stopReplication()
 
 
 @extendedattribute('root', 'tsumufs.pause-sync')

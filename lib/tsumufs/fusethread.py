@@ -46,6 +46,7 @@ from ufo.filesystem import SyncDocument
 from ufo.notify import NotificationDocument
 from ufo.views import SortedByTypeSyncDocument, BuddySharesSyncDocument, MySharesSyncDocument, FriendSyncDocument, TaggedSyncDocument
 
+
 class FuseThread(tsumufs.Debuggable, Fuse):
   '''
   Class that implements the prototype design of the TsumuFS
@@ -102,23 +103,6 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('Initializing permissions overlay object.')
     try:
       tsumufs.fsOverlay = tsumufs.FileSystemOverlay()
-    except:
-      exc_info = sys.exc_info()
-
-      self._debug('*** Unhandled exception occurred')
-      self._debug('***     Type: %s' % str(exc_info[0]))
-      self._debug('***    Value: %s' % str(exc_info[1]))
-      self._debug('*** Traceback:')
-
-      for line in traceback.extract_tb(exc_info[2]):
-        self._debug('***    %s(%d) in %s: %s' % line)
-
-      raise
-
-    self._debug('Initializing notification object.')
-
-    try:
-      tsumufs.notifier = tsumufs.Notification()
     except:
       exc_info = sys.exc_info()
 

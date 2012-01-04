@@ -38,17 +38,7 @@ from filesystemoverlay import *
 from extendedattributes import *
 from metrics import *
 
-# Temporary disable notifications on MacOs and Windows,
-# we probably need to use multiprocessing instead of dbus
-# to get a portable notification system.
-if sys.platform == "linux2":
-  from notification import Notification
-
-else:
-  class Notification(Debuggable):
-    def notify(self, type, value):
-      self._debug('Unable to notify on this operating system (%s): %s, %s'
-                  % (sys.platform, type, value))
+from notification import *
 
 from ufo.utils import *
 from ufo.filesystem import *
@@ -103,28 +93,11 @@ checkpointTimeout = 30          # in seconds
 
 syncLog   = None
 fsOverlay = None
-notifier  = None
 
-
-class EventNotifier(threading._Event):
-
-  def __init__(self, noticationtype):
-    threading._Event.__init__(self)
-    self.type = noticationtype
-
-  def clear(self):
-    threading._Event.clear(self)
-    notifier.notify(self.type, False)
-    
-  def set(self):
-    threading._Event.set(self)
-    notifier.notify(self.type, True)
-
-
-unmounted         = EventNotifier("unmounted")
-fsAvailable       = EventNotifier("connection")
-syncPause         = EventNotifier("syncpause")
-syncWork          = EventNotifier("syncwork")
+unmounted         = EventNotifier(UnmountedNotification)
+fsAvailable       = EventNotifier(ConnectionNotification)
+syncPause         = EventNotifier(SyncPauseNotification)
+syncWork          = EventNotifier(SyncWorkNotification)
 forceDisconnect   = threading.Event()
 remoteReplication = threading.Event()
 
