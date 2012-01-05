@@ -272,14 +272,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
       def __new__(cls, path, *args, **kwargs):
         kwargs.update(self.GetContext())
-        cls = tsumufs.FuseFile
 
-        if tsumufs.viewsManager.isAnyViewPath(path):
-          view_class = tsumufs.viewsManager.getFileClass(path)
-          if view_class:
-            cls = view_class
+        klass = tsumufs.getManager(path).getFileClass(path) or tsumufs.FuseFile
 
-        return cls(path, *args, **kwargs)
+        return klass(path, *args, **kwargs)
 
       def __init__(self2, *args, **kwargs):
         kwargs.update(self.GetContext())

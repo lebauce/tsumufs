@@ -29,9 +29,9 @@ import time
 import random
 
 import tsumufs
-from extendedattributes import extendedattribute
-from metrics import benchmark
-
+from tsumufs.extendedattributes import extendedattribute
+from tsumufs.metrics import benchmark
+from tsumufs.fusefile import FuseFile
 
 class CacheManager(tsumufs.Debuggable):
   '''
@@ -86,6 +86,10 @@ class CacheManager(tsumufs.Debuggable):
 
         tsumufs.fsMount.unmount()
         tsumufs.fsAvailable.clear()
+
+  @benchmark
+  def getFileClass(self, fusepath):
+    return FuseFile
 
   @benchmark
   def statFile(self, fusepath):
