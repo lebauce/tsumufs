@@ -703,52 +703,27 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                 % (path, name, size))
 
     name = name.lower()
-    mode = tsumufs.getManager(path).statFile(path).st_mode
-
-    if path == '/':
-      type_ = 'root'
-    elif stat.S_ISDIR(mode):
-      type_ = 'dir'
-    else:
-      type_ = 'file'
 
     try:
-      try:
-        # Restore the real file path if the file has been acceded via
-        # a view virtual folder.
-        if tsumufs.viewsManager.isAnyViewPath(path):
-          path = tsumufs.viewsManager.realFilePath(path)
-
-        xattr = tsumufs.ExtendedAttributes.getXAttr(type_, path, name)
-
-        if size == 0:
-          # Caller just wants the size of the value.
-          return len(xattr)
-        else:
-          return xattr
-
-      except KeyError, e:
-        self._debug('Request for extended attribute that is not present in the '
-                    'dictionary: <%s, %s, %s>'
-                    % (repr(type_), repr(path), repr(name)))
-
-      except OSError, e:
-        return -e.errno
-
       if name.startswith("security."):
         return -errno.ENODATA
 
-      try:
-        return tsumufs.getManager(path).getxattr(path, name)
-      except OSError, e:
-        self._debug('getxattr: Caught OSError: errno %d: %s'
-                    % (e.errno, e.strerror))
-        return -e.errno
+      xattr = tsumufs.getManager(path).getxattr(path, name)
 
-      except KeyError, e:
-        self._debug('getxattr: Caught KeyError')
-        return -errno.ENODATA
+      if size == 0:
+        # Caller just wants the size of the value.
+        return len(xattr)
+      else:
+        return xattr
 
+    except OSError, e:
+      self._debug('getxattr: Caught OSError: errno %d: %s'
+                  % (e.errno, e.strerror))
+      return -e.errno
+
+    except KeyError, e:
+      self._debug('getxattr: Caught KeyError')
+      return -errno.ENODATA
 
     except Exception, e:
       exc_info = sys.exc_info()
@@ -777,16 +752,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: listxattr | path: %s | size: %d'
                 % (path, size))
 
-    mode = tsumufs.cacheManager.statFile(path).st_mode
-
-    if path == '/':
-      type_ = 'root'
-    elif stat.S_ISDIR(mode):
-      type_ = 'dir'
-    else:
-      type_ = 'file'
-
-    keys = tsumufs.ExtendedAttributes.getAllNames(type_)
+    keys = tsumufs.getManager(path).listxattr(path)
 
     if size == 0:
       return len(''.join(keys)) + len(keys)

@@ -88,9 +88,9 @@ class ExtendedAttributesView(View):
     relpath = "/" + "/".join(path.split('/')[1:])
 
     try:
-      f = tsumufs.fsOverlay[relpath]
       entries = []
-      for key in f.xattrs.keys():
+      f = tsumufs.fsOverlay[relpath]
+      for key in tsumufs.fsOverlay.listxattr(relpath):
         entries.append(SyncDocument(filename=key,
                                     dirpath=os.path.join(f.path),
                                     mode=0700 | stat.S_IFREG,

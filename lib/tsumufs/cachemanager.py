@@ -620,6 +620,33 @@ class CacheManager(tsumufs.Debuggable):
       self.unlockFile(fusepath)
 
   @benchmark
+  def listxattr(self, fusepath):
+    '''
+    List all the extended attributes of a file
+    '''
+    self.lockFile(fusepath)
+
+    try:
+      opcodes = self._genCacheOpcodes(fusepath)
+      self._validateCache(fusepath, opcodes)
+
+      mode = self.statFile(fusepath).st_mode
+    
+      if fusepath == '/':
+        type_ = 'root'
+      elif stat.S_ISDIR(mode):
+        type_ = 'dir'
+      else:
+        type_ = 'file'
+
+      return tsumufs.ExtendedAttributes.getAllNames(type_) + \
+             tsumufs.fsOverlay.listxattr(fusepath)
+
+    finally:
+      self.unlockFile(fusepath)
+
+
+  @benchmark
   def utime(self, fusepath, times):
     '''
     Change time of a file.
