@@ -22,11 +22,13 @@ import os
 import sys
 import traceback
 import errno
+import stat
+import posixpath
 
 import tsumufs
 
 from ufo.database import DocumentHelper
-
+from ufo.filesystem import SyncDocument
 
 class View(tsumufs.Debuggable):
   '''
@@ -97,9 +99,18 @@ class View(tsumufs.Debuggable):
 
   viewDocuments = None    # Document helper to get the view documents.
 
+  parentFolder = None     # Parent folder for the view.
 
   def __init__(self):
     self.viewDocuments = DocumentHelper(self.docClass, tsumufs.dbName)
+
+    if not self.parentFolder:
+      self.parentFolder = tsumufs.viewsPoint
+
+  def getRootDocs(self):
+    yield SyncDocument(dirpath=self.parentFolder,
+                       filename=self.name,
+                       mode=0555 | stat.S_IFDIR)
 
   def getDirents(self, path):
     '''
@@ -122,9 +133,10 @@ class View(tsumufs.Debuggable):
     fields = {}
     occurrences = {}
 
-    filters = self.hackedPath(path).split('/')[1:]
-    for filter in filters:
-      fields[self.levels[filters.index(filter)]] = filter
+    if self.levels:
+      filters = self.hackedPath(path).split('/')[1:]
+      for index, filter in enumerate(filters):
+        fields[self.levels[index]] = filter
 
     # Fills the result list with result filenames, handles duplicated
     # names and save the real paths corresponding to of virtual files paths
@@ -185,10 +197,10 @@ class View(tsumufs.Debuggable):
       return tsumufs.cacheManager.statFile(self.realFilePath(path))
 
     else:
-      rootDirStats = tsumufs.cacheManager.statFile(tsumufs.viewsPoint)
+      document = None
+      rootDirStats = tsumufs.cacheManager.statFile(self.parentFolder)
 
-      if path.count("/"):
-        document = None
+      if path and path != '/':
         for doc in self.getDirents(os.path.dirname(path)):
           if doc.filename == os.path.basename(path):
             document = doc
@@ -196,15 +208,21 @@ class View(tsumufs.Debuggable):
         if not document:
           raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
 
-        # Fill the missing parts of 'stats' with the one of the root folder
-        for key in rootDirStats._keys:
-            if getattr(document.stats, key, None) == None:
-                setattr(document.stats, key, getattr(rootDirStats, key))
-
-        return document.get_stats()
-
       else:
-        return rootDirStats
+        for doc in self.getRootDocs():
+          if path.startswith(doc.path):
+            document = doc
+            break
+
+        if not document:
+          return rootDirStats
+
+      # Fill the missing parts of 'stats' with the one of the root folder
+      for key in rootDirStats._keys:
+        if getattr(document.stats, key, None) == None:
+          setattr(document.stats, key, getattr(rootDirStats, key))
+
+      return document.get_stats()
 
   def getxattr(self, path, key):
     '''
@@ -253,16 +271,31 @@ class View(tsumufs.Debuggable):
       return realpath
 
     else:
-      return os.path.join(tsumufs.viewsPoint, path)
+      return os.path.join(self.parentFolder, path)
 
   def overlayPath(self, path):
-    return os.path.join(os.sep, tsumufs.viewsPoint, path)
+    return os.path.join(os.sep, self.parentFolder, path)
 
   def hackedPath(self, path):
     return path
 
+  def relPath(self, path):
+    if self.mountPoint != '/':
+      viewPath = path.partition(self.mountPoint + '/')[2]
+    else:
+      viewPath = path.partition(self.mountPoint)[2]
+
+    if viewPath:
+      return "/" + viewPath
+
+    return ""
+
   def isFileLevel(self, path):
-    return path.count(os.sep) > len(self.levels)
+    return self.levels and path.count(os.sep) > len(self.levels)
+
+  @property
+  def mountPoint(self):
+    return posixpath.join(self.parentFolder, self.name)
 
 
 def loadViews():

@@ -576,7 +576,19 @@ class CacheManager(tsumufs.Debuggable):
         raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
 
       self._debug('Looking for the "%s" extended attribute on %s' % (key, fusepath))
-      value = tsumufs.fsOverlay.getxattr(fusepath, key)
+
+      try:
+        if fusepath == '/':
+          type_ = 'root'
+        elif stat.S_ISDIR(self.statFile(fusepath).st_mode):
+          type_ = 'dir'
+        else:
+          type_ = 'file'
+        
+        value = tsumufs.ExtendedAttributes.getXAttr(type_, fusepath, key)
+
+      except KeyError, e:
+        value = tsumufs.fsOverlay.getxattr(fusepath, key)
 
       self._debug('Returning extended attribute %s.' % repr(value))
       return value

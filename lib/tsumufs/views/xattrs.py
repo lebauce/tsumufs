@@ -33,8 +33,8 @@ class ExtendedAttributeFile(tsumufs.Debuggable):
   def __init__(self, path, flags=0, mode=None, uid=None, gid=None, pid=None):
     self._viewPath = path
     self._flags = flags
-
-    x, x, relpath = path.partition(tsumufs.viewsPoint + '/')
+    x, x, relpath = path.partition(os.path.join(tsumufs.viewsPoint,
+                                                ExtendedAttributesView.name))
     self._name = os.path.basename(path)
     self._path = os.path.dirname("/" + "/".join(relpath.split('/')[1:]))
     self._helper = DocumentHelper(SyncDocument, tsumufs.dbName)
@@ -43,7 +43,8 @@ class ExtendedAttributeFile(tsumufs.Debuggable):
     return tsumufs.cacheManager.getxattr(self._path, self._name)
 
   def write(self, new_data, offset):
-    tsumufs.fuseThread.setxattr(self._path, self._name, new_data, len(new_data))
+    tsumufs.fuseThread.setxattr(os.path.dirname(self._viewPath), self._name,
+                                new_data, len(new_data))
     return len(new_data)
 
   def release(self, flags):
@@ -55,11 +56,9 @@ class ExtendedAttributeFile(tsumufs.Debuggable):
   def flush(self):
     return 0
 
-  def __getattr__(self, attr):
-    return None
-
   def ftruncate(self, length):
-    return tsumufs.fuseThread.setxattr(self._path, self._name, "", 0)
+    return tsumufs.fuseThread.setxattr(os.path.dirname(self._viewPath),
+                                       self._name, "", 0)
 
   def fgetattr(self):
     document = tsumufs.fsOverlay[self._path]

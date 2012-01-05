@@ -52,25 +52,45 @@ class ViewsManager(tsumufs.Debuggable):
     in the viewPoint directory.
     '''
 
-    for name in self._views.keys():
-        yield SyncDocument(filename=name, mode=0555 | stat.S_IFDIR)
+    for name, view in self._views.items():
+      for doc in view.getRootDocs():
+        yield doc
+
+  def parseViewPath(self, path):
+    '''
+    Parse the path and returns the view name
+    and the path relative to the view
+    '''
+
+    for name, view in self._views.items():
+      for doc in view.getRootDocs():
+        if path.startswith(doc.path):
+          return name, view.relPath(path)
+
+    for name, view in self._views.items():
+      viewPath = view.relPath(path)
+      if viewPath:
+        return name, viewPath
+
+    return None, path
 
   def isAnyViewPath(self, path):
     '''
     Test if it's a path to a view directory.
     '''
-    x, x, viewPath = path.partition(tsumufs.viewsPoint + '/')
 
-    return self._views.has_key(viewPath.split('/')[0])
+    view = self.parseViewPath(path)[0]
+
+    return self._views.has_key(view)
 
   def getFileClass(self, path):
     '''
     Return the dedicated file class for a path
     '''
 
-    x, x, viewPath = path.partition(tsumufs.viewsPoint + '/')
+    view = self.parseViewPath(path)[0]
 
-    return self._views[viewPath.split('/')[0]].fileClass
+    return self._views[view].fileClass
 
   def __getattr__(self, attr):
     '''
@@ -83,27 +103,26 @@ class ViewsManager(tsumufs.Debuggable):
     # Wrapper function that make path arguments relative to the view path,
     # and dispatch the call to the corresponding view instance.
     def path_wrapper(*args, **kw):
-      view = None
+      view = ""
       wrapped_args = ()
 
       for arg in args:
         if (isinstance(arg, str) or isinstance(arg, unicode)) and self.isAnyViewPath(arg):
-          x, x, relative = arg.partition(tsumufs.viewsPoint + '/')
-          view = relative.split('/')[0]
+          view, relative = self.parseViewPath(arg)
           wrapped_args += (relative,)
 
         else:
           wrapped_args += (arg,)
 
-      self._debug("Calling '%s%s' on '%s' view" % (attr, str(wrapped_args), str(view)))
-
-      method = getattr(self._views[view], attr, None)
+      method = getattr(self._views.get(view), attr, None)
       if not method:
         # Attempt to open a file in a view.
         # Default behaviour is to delegate the call to the cache manager
         # as files in most views are indeed real files accessible through
         # a different path
         method = getattr(tsumufs.cacheManager, attr)
+
+      self._debug("Calling '%s%s' on '%s' view" % (attr, str(wrapped_args), view))
 
       return method(*wrapped_args, **kw)
 
