@@ -55,25 +55,18 @@ class FuseFile(tsumufs.Debuggable):
     self._uid = uid
     self._gid = gid
     self._pid = pid
+    self._manager = tsumufs.cacheManager
 
     # Restore the real file path if the file has been acceded via
     # a view virtual folder.
     if tsumufs.viewsManager.isAnyViewPath(path):
-      realPath = tsumufs.viewsManager.realFilePath(path)
-
-      if tsumufs.viewsManager.isAnyViewPath(realPath):
-        self._manager = tsumufs.viewsManager
-        self._path = path
-
-      else:
-        self._manager = tsumufs.cacheManager
-        self._path = realPath
+      self._path = tsumufs.viewsManager.realFilePath(path)
 
     else:
-      self._manager = tsumufs.cacheManager
       self._path = path
 
     self._setName('FuseFile <%s -> %s> ' % (path, self._path))
+
     # NOTE: If mode == None, then we were called as a creat(2) system call,
     # otherwise we were called as an open(2) system call.
 
