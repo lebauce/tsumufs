@@ -37,9 +37,6 @@ from ufo.errors import *
 from ufo.user import user
 import ufo.acl as acl
 
-import xmlrpclib as rpc
-from ipalib.rpc import KerbTransport
-
 import gettext
 _ = gettext.gettext
 
