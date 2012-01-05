@@ -72,12 +72,6 @@ class FriendsView(View, Debugger):
 
     return View.statFile(self, path)
 
-  def getDirents(self, path):
-    returned = []
-    for dirent in View.getDirents(self, path):
-      returned.append(dirent.filename)
-      yield dirent
-
   def makeDir(self, path, mode, uid, gid):
     if self.levels[path.count("/") - 1] != "buddy":
       View.mkdir(self, path, mode)
