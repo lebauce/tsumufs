@@ -580,6 +580,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       result = tsumufs.getManager(path).statFile(path)
+
       self._debug('Returning (%d, %d, %o)' %
                   (result.st_uid, result.st_gid, result.st_mode))
 
@@ -634,7 +635,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     try:
       context = self.GetContext()
 
-      tsumufs.cacheManager.access(context['uid'], path, os.W_OK)
+      tsumufs.getManager(path).access(context['uid'], path, os.W_OK)
 
       if tsumufs.getManager(path).setxattr(path, name, value):
         tsumufs.syncLog.addMetadataChange(path, xattrs=[name], acls=(name == "system.posix_acl_access"))
@@ -677,7 +678,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     try:
       context = self.GetContext()
 
-      tsumufs.cacheManager.access(context['uid'], path, os.W_OK)
+      tsumufs.getManager(path).access(context['uid'], path, os.W_OK)
 
       if tsumufs.getManager(path).setxattr(path, name, None):
         tsumufs.syncLog.addMetadataChange(path, xattrs=[name], acls=(name == "system.posix_acl_access"))
@@ -773,9 +774,9 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       context = self.GetContext()
-      tsumufs.cacheManager.access(context['uid'], path, os.R_OK)
+      tsumufs.getManager(path).access(context['uid'], path, os.R_OK)
 
-      retval = tsumufs.cacheManager.readLink(path)
+      retval = tsumufs.getManager(path).readLink(path)
 
       self._debug('Returning: %s' % retval)
       return retval
@@ -832,6 +833,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
         yield dirent
 
       dociterators = [ tsumufs.getManager(path).getDirents(path) ]
+
       if path == tsumufs.viewsPoint:
         # Append the root directories of views
         dociterators.append(tsumufs.viewsManager.getRootDirs())
@@ -927,9 +929,10 @@ class FuseThread(tsumufs.Debuggable, Fuse):
 
     try:
       context = self.GetContext()
-      tsumufs.cacheManager.access(context['uid'], os.path.dirname(dest), os.W_OK | os.X_OK)
+      parent = os.path.dirname(dest)
+      tsumufs.getManager(parent).access(context['uid'], parent, os.W_OK | os.X_OK)
 
-      if tsumufs.cacheManager.makeSymlink(src, dest, context['uid'], context['gid']):
+      if tsumufs.getManager(dest).makeSymlink(src, dest, context['uid'], context['gid']):
         tsumufs.syncLog.addNew('symlink', filename=dest)
 
       return 0
@@ -1026,7 +1029,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: chmod | path: %s | mode: %o' % (path, mode))
 
     context = self.GetContext()
-    file_stat = tsumufs.cacheManager.statFile(path)
+    file_stat = tsumufs.getManager(path).statFile(path)
 
     self._debug('context: %s' % repr(context))
     self._debug('file: uid=%d, gid=%d, mode=%o' %
@@ -1037,13 +1040,13 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       self._debug('chmod: user not owner, and user not root -- EPERM')
       return -errno.EPERM
 
-    tsumufs.cacheManager.access(context['uid'],
-                                os.path.dirname(path),
-                                os.F_OK)
+    tsumufs.getManager(path).access(context['uid'],
+                                    os.path.dirname(path),
+                                    os.F_OK)
 
     try:
       self._debug('chmod: access granted -- chmoding')
-      if tsumufs.cacheManager.chmod(path, mode &~ tsumufs.defaultModeMask):
+      if tsumufs.getManager(path).chmod(path, mode &~ tsumufs.defaultModeMask):
         tsumufs.syncLog.addMetadataChange(path, mode=True)
 
       return 0
@@ -1065,7 +1068,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
                (path, newuid, newgid))
 
     context = self.GetContext()
-    file_stat = tsumufs.cacheManager.statFile(path)
+    file_stat = tsumufs.getManager(path).statFile(path)
 
     if context['uid'] != 0:
       if newuid != -1 and context['uid'] != newuid:
@@ -1076,7 +1079,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
           raise OSError(errno.EPERM, os.strerror(errno.EPERM))
 
     try:
-      if tsumufs.cacheManager.chown(path, newuid, newgid):
+      if tsumufs.getManager(path).chown(path, newuid, newgid):
         tsumufs.syncLog.addMetadataChange(path, uid=True, gid=True)
 
       return 0
@@ -1137,10 +1140,11 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       if context['uid'] != 0:
         raise OSError(errno.EPERM)
 
-    tsumufs.cacheManager.access(context['uid'], os.path.dirname(path), os.W_OK|os.X_OK)
+    parent = os.path.dirname(path)
+    tsumufs.getManager(parent).access(context['uid'], parent, os.W_OK|os.X_OK)
 
     try:
-      if tsumufs.cacheManager.makeNode(path, mode &~ tsumufs.defaultModeMask, dev):
+      if tsumufs.getManager(path).makeNode(path, mode &~ tsumufs.defaultModeMask, dev):
 
         if mode & stat.S_IFREG:
           tsumufs.syncLog.addNew('file', filename=path)
@@ -1169,8 +1173,9 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: mkdir | path: %s | mode: %o' % (path, mode))
 
     context = self.GetContext()
-    tsumufs.getManager(path).access(context['uid'], os.path.dirname(path),
-                                os.W_OK|os.X_OK)
+    parent = os.path.dirname(path)
+    tsumufs.getManager(parent).access(context['uid'], parent,
+                                      os.W_OK|os.X_OK)
 
     try:
       if tsumufs.getManager(path).makeDir(path, mode &~ tsumufs.defaultModeMask,
@@ -1209,7 +1214,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
     self._debug('opcode: utime | path: %s' % (path))
 
     context = self.GetContext()
-    file_stat = tsumufs.cacheManager.statFile(path)
+    file_stat = tsumufs.getManager(path).statFile(path)
 
     self._debug('context: %s' % repr(context))
     self._debug('file: uid=%d, gid=%d, mode=%o' %
@@ -1221,7 +1226,7 @@ class FuseThread(tsumufs.Debuggable, Fuse):
       return 0
 
     try:
-      if tsumufs.cacheManager.utime(path, times):
+      if tsumufs.getManager(path).utime(path, times):
         tsumufs.syncLog.addMetadataChange(path, times=True)
 
       return 0
